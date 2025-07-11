@@ -69,7 +69,7 @@ class _SalesScreenState extends State<SalesScreen> {
           final totCredit = sum(credit);
 
           // ---- ui -------------------------------------------------------------
-          return Row(
+          return Column(
             children: [
               _filters(context),
               const SizedBox(height: 8),
