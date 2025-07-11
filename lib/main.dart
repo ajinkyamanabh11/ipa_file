@@ -9,7 +9,7 @@ import 'screens/home_screen.dart';
 import 'screens/stock_Screens/item_type_screen.dart';
 import 'screens/stock_Screens/item_list_screen.dart';
 
-import 'controllers/item_detail_controller.dart'; // for BindingsBuilder
+// for BindingsBuilder
 
 void main() => runApp(const MyApp());
 
