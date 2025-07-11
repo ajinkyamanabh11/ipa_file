@@ -6,6 +6,7 @@ import '../widget/custom_app_bar.dart';
 
 class SalesScreen extends StatefulWidget {
   const SalesScreen({super.key});
+
   @override
   State<SalesScreen> createState() => _SalesScreenState();
 }
@@ -45,7 +46,6 @@ class _SalesScreenState extends State<SalesScreen> {
             return Center(child: Text('❌ ${ctrl.error.value}'));
           }
 
-          // ---- filter + sort --------------------------------------------------
           final list = ctrl
               .filter(
             nameQ: nameCtrl.text,
@@ -59,28 +59,48 @@ class _SalesScreenState extends State<SalesScreen> {
               return asc ? d1.compareTo(d2) : d2.compareTo(d1);
             });
 
-          final cash   = list.where((m) => m['PaymentMode'].toString().toLowerCase() == 'cash').toList();
-          final credit = list.where((m) => m['PaymentMode'].toLowerCase() == 'credit').toList();
+          final cash = list
+              .where((m) =>
+          m['PaymentMode'].toString().toLowerCase() == 'cash')
+              .toList();
+          final credit = list
+              .where((m) =>
+          m['PaymentMode'].toString().toLowerCase() == 'credit')
+              .toList();
 
           double sum(List<Map<String, dynamic>> rows) =>
               rows.fold(0.0, (p, e) => p + (e['Amount'] ?? 0));
 
-          final totCash   = sum(cash);
+          final totCash = sum(cash);
           final totCredit = sum(credit);
 
-          // ---- ui -------------------------------------------------------------
           return Column(
             children: [
               _filters(context),
               const SizedBox(height: 8),
-              _totButton('Cash Sale',   totCash,   showCash, () {
-                setState(() { showCash = !showCash; showCredit = false; });
-              }),
-              if (showCash) Expanded(child: _table(cash)),
-              _totButton('Credit Sale', totCredit, showCredit, () {
-                setState(() { showCredit = !showCredit; showCash = false; });
-              }),
-              if (showCredit) Expanded(child: _table(credit)),
+              Row(
+                children: [
+                  Expanded(
+                    child: _totButton('Cash Sale', totCash, showCash, () {
+                      setState(() {
+                        showCash = !showCash;
+                        showCredit = false;
+                      });
+                    }),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _totButton('Credit Sale', totCredit, showCredit, () {
+                      setState(() {
+                        showCredit = !showCredit;
+                        showCash = false;
+                      });
+                    }),
+                  ),
+                ],
+              ),
+              if (showCash) Expanded(child: _saleList(cash)),
+              if (showCredit) Expanded(child: _saleList(credit)),
               const Divider(height: 24),
               Text(
                 'Total  ₹${(totCash + totCredit).toStringAsFixed(2)}',
@@ -93,7 +113,6 @@ class _SalesScreenState extends State<SalesScreen> {
     );
   }
 
-  // ── small widgets ──────────────────────────────────────────────
   Widget _filters(BuildContext ctx) => Row(
     children: [
       Expanded(
@@ -131,8 +150,7 @@ class _SalesScreenState extends State<SalesScreen> {
     ],
   );
 
-  Widget _totButton(
-      String label, double amt, bool active, VoidCallback tap) =>
+  Widget _totButton(String label, double amt, bool active, VoidCallback tap) =>
       SizedBox(
         width: double.infinity,
         child: ElevatedButton(
@@ -145,25 +163,19 @@ class _SalesScreenState extends State<SalesScreen> {
         ),
       );
 
-  Widget _table(List<Map<String, dynamic>> rows) => SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: DataTable(
-      columns: const [
-        DataColumn(label: Text('Name')),
-        DataColumn(label: Text('Bill No')),
-        DataColumn(label: Text('Date')),
-        DataColumn(label: Text('Amount')),
-      ],
-      rows: rows
-          .map((m) => DataRow(cells: [
-        DataCell(Text(m['AccountName'].toString())),
-        DataCell(Text(m['BillNo'].toString())),
-        DataCell(Text(
-            DateFormat('dd-MMM-yyyy').format(m['EntryDate']))),
-        DataCell(
-            Text('₹${(m['Amount'] ?? 0).toStringAsFixed(2)}')),
-      ]))
-          .toList(),
-    ),
+  Widget _saleList(List<Map<String, dynamic>> rows) => ListView.builder(
+    itemCount: rows.length,
+    itemBuilder: (_, i) {
+      final m = rows[i];
+      return Card(
+        child: ListTile(
+          title: Text(m['AccountName'] ?? ''),
+          subtitle: Text(
+              'Bill No: ${m['BillNo']} • ${DateFormat('dd-MMM-yyyy').format(m['EntryDate'])}'),
+          trailing:
+          Text('₹${(m['Amount'] ?? 0).toStringAsFixed(2)}'),
+        ),
+      );
+    },
   );
 }
