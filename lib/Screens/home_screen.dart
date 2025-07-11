@@ -89,6 +89,7 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             _buildDrawerItem(Icons.dashboard, "Dashboard", () {}),
+            _buildDrawerItem(Icons.person, "Profile", () {}),
             _buildDrawerItem(Icons.inventory, "Stock",
                     () => navigateTo(Routes.itemTypes)),
             _buildDrawerItem(Icons.point_of_sale, "Sales",
