@@ -7,14 +7,16 @@ import 'package:http/http.dart' as http;
 
 import '../model/account_master_model.dart';
 import '../model/allaccounts_model.dart';
-import 'google_signin_controller.dart';   // your class
+import 'google_signin_controller.dart';
 
 /// ——————————————————— helpers ———————————————————
 class GoogleAuthClient extends http.BaseClient {
   final Map<String, String> _headers;
   final http.Client _client = http.Client();
   GoogleAuthClient(this._headers);
-  @override Future<http.StreamedResponse> send(http.BaseRequest r) => _client.send(r..headers.addAll(_headers));
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest r) =>
+      _client.send(r..headers.addAll(_headers));
 }
 
 class DriveCsv {
@@ -44,14 +46,17 @@ class DriveCsv {
       throw Exception('$fileName not found');
     }
     final id = list.files!.first.id!;
-    final media = await api.files.get(id, downloadOptions: drive.DownloadOptions.fullMedia) as drive.Media;
+    final media =
+    await api.files.get(id, downloadOptions: drive.DownloadOptions.fullMedia)
+    as drive.Media;
     final bytes = <int>[];
     await for (final chunk in media.stream) bytes.addAll(chunk);
     return utf8.decode(bytes);
   }
 
   static List<Map<String, dynamic>> parse(String csv) {
-    final rows = const CsvToListConverter(eol: '\n', shouldParseNumbers: false).convert(csv);
+    final rows =
+    const CsvToListConverter(eol: '\n', shouldParseNumbers: false).convert(csv);
     if (rows.isEmpty) return [];
     final headers = rows.first.map((e) => e.toString()).toList();
     return rows.skip(1).map((row) => Map.fromIterables(headers, row)).toList();
@@ -60,17 +65,18 @@ class DriveCsv {
 
 /// ——————————————————— controller ———————————————————
 class CustomerLedger_Controller extends GetxController {
-  // Google‑sign‑in controller injected in main.dart   Get.put(GoogleSignInController());
+  // Google‑sign‑in controller injected in main.dart
   final gs = Get.find<GoogleSignInController>();
 
-  final accounts      = <AccountModel>[].obs;
-  final transactions  = <AllAccountsModel>[].obs;
-  final filtered      = <AllAccountsModel>[].obs;
+  final accounts = <AccountModel>[].obs;
+  final lowerCaseNames = <String>[].obs;
+  final transactions = <AllAccountsModel>[].obs;
+  final filtered = <AllAccountsModel>[].obs;
 
-  final drTotal       = 0.0.obs;
-  final crTotal       = 0.0.obs;
-  final currentName   = ''.obs;
-  final isLoading     = true.obs;
+  final drTotal = 0.0.obs;
+  final crTotal = 0.0.obs;
+  final currentName = ''.obs;
+  final isLoading = true.obs;
 
   final _drivePath = const ['SoftAgri_Backups', '20252026', 'softagri_csv'];
 
@@ -87,11 +93,16 @@ class CustomerLedger_Controller extends GetxController {
       if (headers == null) throw 'Not signed in to Google';
       final api = drive.DriveApi(GoogleAuthClient(headers));
 
-      final accCsv  = await DriveCsv.fetch(api: api, path: _drivePath, fileName: 'AccountMaster.csv');
-      final allCsv  = await DriveCsv.fetch(api: api, path: _drivePath, fileName: 'AllAccounts.csv');
+      final accCsv =
+      await DriveCsv.fetch(api: api, path: _drivePath, fileName: 'AccountMaster.csv');
+      final allCsv =
+      await DriveCsv.fetch(api: api, path: _drivePath, fileName: 'AllAccounts.csv');
 
-      accounts.assignAll( DriveCsv.parse(accCsv).map(AccountModel.fromMap) );
-      transactions.assignAll( DriveCsv.parse(allCsv).map(AllAccountsModel.fromMap) );
+      final parsedAccounts = DriveCsv.parse(accCsv).map(AccountModel.fromMap).toList();
+      accounts.assignAll(parsedAccounts);
+      lowerCaseNames.assignAll(parsedAccounts.map((e) => e.accountName.toLowerCase()));
+
+      transactions.assignAll(DriveCsv.parse(allCsv).map(AllAccountsModel.fromMap));
     } catch (e) {
       log('❌ $e');
     } finally {
@@ -106,7 +117,8 @@ class CustomerLedger_Controller extends GetxController {
     );
     if (acc == null) {
       filtered.clear();
-      drTotal(0); crTotal(0);
+      drTotal(0);
+      crTotal(0);
       return;
     }
     filtered.assignAll(
@@ -120,12 +132,14 @@ class CustomerLedger_Controller extends GetxController {
     for (final t in filtered) {
       t.isDr ? dr += t.amount : cr += t.amount;
     }
-    drTotal(dr); crTotal(cr);
+    drTotal(dr);
+    crTotal(cr);
   }
 
   void clearFilter() {
     filtered.clear();
     currentName('');
-    drTotal(0); crTotal(0);
+    drTotal(0);
+    crTotal(0);
   }
 }
