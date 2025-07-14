@@ -90,7 +90,7 @@ class _SalesScreenState extends State<SalesScreen> {
                 Expanded(child: SingleChildScrollView(child: _lazyTable(cashRows))),
               if (showCredit)
                 Expanded(child: SingleChildScrollView(child: _lazyTable(creRows))),
-              const Divider(height: 24),
+              const Divider(height: 8),
               Text('Total  ₹${(totCash + totCredit).toStringAsFixed(2)}',
                   style: const TextStyle(fontWeight: FontWeight.bold)),
             ],
