@@ -52,88 +52,118 @@ class _SalesScreenState extends State<SalesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const CustomAppBar(title: Text('Sales Report')),
-      floatingActionButton: FloatingActionButton(
-        onPressed: sc.fetchSales,
-        child: const Icon(Icons.refresh),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Obx(() {
-          if (sc.isLoading.value)
-            return const Center(child: DotsWaveLoadingText());
-          if (sc.error.value != null)
-            return Center(child: Text('❌ ${sc.error.value!}'));
 
-          final data = _filtered();
-          final cashRows = data
-              .where((m) => m['PaymentMode'].toString().toLowerCase() == 'cash')
-              .toList();
-          final creRows = data
-              .where((m) => m['PaymentMode'].toLowerCase() == 'credit')
-              .toList();
+      body: Stack(
+        children: [
+          RefreshIndicator(
+            onRefresh: () async => sc.fetchSales(),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Obx(() {
+                if (sc.isLoading.value) return const Center(child: DotsWaveLoadingText());
+                if (sc.error.value != null) return Center(child: Text('❌ ${sc.error.value!}'));
 
-          final totCash = _sum(cashRows);
-          final totCredit = _sum(creRows);
+                final data = _filtered();
+                final cashRows = data
+                    .where((m) => m['PaymentMode'].toString().toLowerCase() == 'cash')
+                    .toList();
+                final creRows = data
+                    .where((m) => m['PaymentMode'].toLowerCase() == 'credit')
+                    .toList();
 
-          return Column(
-            children: [
-              _filters(context),
-              const SizedBox(height: 8),
-              // Total buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: _totBtn('Cash Sale', totCash, showCash, () {
-                      setState(() {
-                        showCash = !showCash;
-                        showCredit = false;
-                      });
-                    }),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _totBtn('Credit Sale', totCredit, showCredit, () {
-                      setState(() {
-                        showCredit = !showCredit;
-                        showCash = false;
-                      });
-                    }),
-                  ),
-                ],
-              ),
-              // Tables
-              if (showCash)
-                Expanded(
-                  child: SingleChildScrollView(child: _lazyTable(cashRows)),
-                ),
-              if (showCredit)
-                Expanded(
-                  child: SingleChildScrollView(child: _lazyTable(creRows)),
-                ),
-              const Divider(height: 8),
-              RichText(
-                text: TextSpan(
-                  text: 'Total - ',
-                  style: const TextStyle(               // base style for “Total ₹”
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
+                final totCash = _sum(cashRows);
+                final totCredit = _sum(creRows);
+
+                return ListView(
+                  padding: const EdgeInsets.only(bottom: 100), // for bottom spacing
                   children: [
-                    TextSpan(
-                      text: "₹${(totCash + totCredit).toStringAsFixed(2)}",
-                      style: const TextStyle(           // green just for the number
-                        color: Colors.green,
+                    _filters(context),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _totBtn('Cash Sale', totCash, showCash, () {
+                            setState(() {
+                              showCash = !showCash;
+                              showCredit = false;
+                            });
+                          }),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _totBtn('Credit Sale', totCredit, showCredit, () {
+                            setState(() {
+                              showCredit = !showCredit;
+                              showCash = false;
+                            });
+                          }),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (showCash) _lazyTable(cashRows),
+                    if (showCredit) _lazyTable(creRows),
+                  ],
+                );
+              }),
+            ),
+          ),
+          // 👇 Stacked Grand Total
+          Positioned(
+            bottom: 16,
+            left: 16,
+            right: 16,
+            child: Obx(() {
+              final totCash = _sum(
+                sc.filter(nameQ: nameCtrl.text, billQ: billCtrl.text, date: picked)
+                    .where((m) => m['PaymentMode'].toString().toLowerCase() == 'cash')
+                    .toList(),
+              );
+              final totCredit = _sum(
+                sc.filter(nameQ: nameCtrl.text, billQ: billCtrl.text, date: picked)
+                    .where((m) => m['PaymentMode'].toString().toLowerCase() == 'credit')
+                    .toList(),
+              );
+              final grandTotal = totCash + totCredit;
+
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.green.shade200),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 6,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Grand Total',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      '₹${grandTotal.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
+                        color: Colors.green,
                       ),
                     ),
                   ],
                 ),
-              )
-            ],
-          );
-        }),
+              );
+            }),
+          ),
+        ],
       ),
+
+
     );
   }
 

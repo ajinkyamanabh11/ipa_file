@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -17,8 +16,6 @@ class CustomerLedger_Screen extends StatefulWidget {
 class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
   final ctrl = Get.put(CustomerLedger_Controller());
   final TextEditingController search = TextEditingController();
-
-  // controller for the main vertical scroll view
   final ScrollController _scrollCtrl = ScrollController();
   bool _showBackToTop = false;
   Timer? _debounce;
@@ -65,53 +62,61 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
             onRefresh: () async => ctrl.loadData(),
             child: Column(
               children: [
-                SizedBox(height: 12,),
-
+                const SizedBox(height: 12),
                 _autocomplete(names),
-                // ——— scrollable area —————————————————————————
                 Expanded(
                   child: SingleChildScrollView(
-                    controller: _scrollCtrl,                        // 👈 controller
+                    controller: _scrollCtrl,
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-
                         const SizedBox(height: 20),
                         _messages(names),
-                        if (txns.isNotEmpty) _table(context, txns),
+                        if (txns.isNotEmpty) _paginatedTable(context, txns),
                       ],
                     ),
                   ),
                 ),
-                // ——— fixed bottom totals panel ——————————————
                 _totals(net),
               ],
             ),
           );
         }),
-
-        // ——— floating “Back to Top” button ————————————————
         floatingActionButton: _showBackToTop
-            ? FloatingActionButton(
-          heroTag: 'topBtn',
-          backgroundColor: Colors.green,
-          onPressed: () {
-            _scrollCtrl.animateTo(
-              0,
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeOut,
-            );
-          },
-          child: const Icon(Icons.arrow_upward),
+            ? Container(
+          width: 56,
+          height: 56,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 10,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: FloatingActionButton(
+            heroTag: 'topBtn',
+            backgroundColor: Colors.green,
+            elevation: 0,
+            onPressed: () {
+              _scrollCtrl.animateTo(
+                0,
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeOut,
+              );
+            },
+            child: const Icon(Icons.arrow_upward, color: Colors.white),
+          ),
         )
             : null,
       ),
     );
   }
 
-  // ——————————————————— autocomplete ———————————————————
   Widget _autocomplete(List<String> names) => RawAutocomplete<String>(
     textEditingController: search,
     focusNode: FocusNode(),
@@ -120,7 +125,7 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
         : names.where((n) => n.contains(v.text.toLowerCase())),
     onSelected: (String value) {
       ctrl.filterByName(value);
-      FocusManager.instance.primaryFocus?.unfocus(); // ⬅️ hide keyboard
+      FocusManager.instance.primaryFocus?.unfocus();
     },
     fieldViewBuilder: (context, textCtrl, focusNode, onFieldSubmitted) {
       return TextField(
@@ -129,8 +134,6 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
         decoration: InputDecoration(
           hintText: 'Search by Account Name',
           prefixIcon: const Icon(Icons.search, color: Colors.green),
-
-          // ——— clear icon ———
           suffixIcon: textCtrl.text.isEmpty
               ? null
               : IconButton(
@@ -141,10 +144,8 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
               FocusScope.of(context).unfocus();
             },
           ),
-
           filled: true,
           fillColor: Colors.grey.shade100,
-
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(30),
             borderSide: BorderSide.none,
@@ -184,8 +185,6 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
     ),
   );
 
-
-  // ——————————————————— empty / error messages ————————————
   Widget _messages(List<String> names) {
     final q = search.text.trim();
     if (q.isEmpty) {
@@ -196,123 +195,45 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
       return Padding(
         padding: const EdgeInsets.all(20),
         child: Text('No customer or supplier named "$q" found.',
-            style:
-            const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
       );
     }
     if (ctrl.filtered.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(20),
         child: Text('No transactions found for "$q".',
-            style: const TextStyle(
-                color: Colors.orange, fontWeight: FontWeight.bold)),
+            style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
       );
     }
     return const SizedBox.shrink();
   }
 
-  // ——————————————————— data table ————————————————————
-  Widget _table(BuildContext ctx, List txns) {
-    double bal = 0, totDr = 0, totCr = 0;
-    final rows = <DataRow>[];
+  Widget _paginatedTable(BuildContext context, List txns) {
+    /// show all rows when fewer than 10
+    final int rowsPer = txns.length < 10 ? txns.length : 10;
 
-    for (int i = 0; i < txns.length; i++) {
-      final t = txns[i];
-      if (t.isDr) {
-        bal += t.amount;
-        totDr += t.amount;
-      } else {
-        bal -= t.amount;
-        totCr += t.amount;
-      }
+    return PaginatedDataTable(
+      headingRowColor: MaterialStateProperty.all(Colors.lightGreen[100]),
+      columnSpacing: 30,
 
-      rows.add(DataRow(
-        color:
-        MaterialStateProperty.all(i.isEven ? Colors.white : Colors.green[50]),
-        cells: [
-          DataCell(Text(DateFormat('dd/MM/yy').format(t.transactionDate))),
-          DataCell(
-            SizedBox(
-              width: 120,
-              child: Text(
-                t.narrations,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            onTap: () => _showFullText(ctx, t.narrations),
-          ),
-          DataCell(Center(child: Text(t.invoiceNo?.toString() ?? '-'))),
-          DataCell(Text(t.isDr ? t.amount.toStringAsFixed(2) : '-')),
-          DataCell(Text(!t.isDr ? t.amount.toStringAsFixed(2) : '-')),
-          DataCell(Text('₹${bal.toStringAsFixed(2)}',
-              style:
-              TextStyle(color: bal < 0 ? Colors.red : Colors.green))),
-        ],
-      ));
-    }
+      rowsPerPage: rowsPer,
+      // keep the dropdown sensible
+      availableRowsPerPage: rowsPer < 10
+          ? [rowsPer]                       // only one choice when <10
+          : const [5, 10, 20, 50],
 
-    // closing balance row
-    rows.add(DataRow(
-      color: MaterialStateProperty.all(Colors.lightGreen[100]),
-      cells: [
-        const DataCell(Text('')),
-        const DataCell(
-          Text('Closing Balance',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-        ),
-        const DataCell(Text('')),
-        const DataCell(Text('')),
-        const DataCell(Text('')),
-        DataCell(Text(
-          '₹${bal.toStringAsFixed(2)}',
-          style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: bal < 0 ? Colors.red : Colors.green),
-        )),
+      columns: const [
+        DataColumn(label: Text('Date')),
+        DataColumn(label: SizedBox(width: 120, child: Text('Type'))),
+        DataColumn(label: Text('Invoice')),
+        DataColumn(label: Text('Debit')),
+        DataColumn(label: Text('Credit')),
+        DataColumn(label: Text('Balance')),
       ],
-    ));
-
-    // scrollbars
-    final ScrollController vCtrl = ScrollController();
-    final ScrollController hCtrl = ScrollController();
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Scrollbar(
-        controller: vCtrl,
-        thumbVisibility: true,
-        child: SingleChildScrollView(
-          controller: vCtrl,
-          child: Scrollbar(
-            controller: hCtrl,
-            thumbVisibility: true,
-            notificationPredicate: (_) => false,
-            child: SingleChildScrollView(
-              controller: hCtrl,
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                columnSpacing: 30,
-                headingRowColor:
-                MaterialStateProperty.all(Colors.lightGreen[100]),
-                columns: const [
-                  DataColumn(label: Text('Date')),
-                  DataColumn(label: SizedBox(width: 120, child: Text('Type'))),
-                  DataColumn(label: Text('Invoice')),
-                  DataColumn(label: Text('Debit')),
-                  DataColumn(label: Text('Credit')),
-                  DataColumn(label: Text('Balance')),
-                ],
-                rows: rows,
-              ),
-            ),
-          ),
-        ),
-      ),
+      source: _LedgerSource(txns, context),
     );
   }
 
-  // ——————————————————— totals card ————————————————————
   Widget _totals(double net) => Container(
     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     padding: const EdgeInsets.all(16),
@@ -329,16 +250,13 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
         _row('Cr Total', ctrl.crTotal.value),
         const Divider(),
         Row(children: [
-          const Text('Net Outstanding: ',
-              style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text('Net Outstanding: ', style: TextStyle(fontWeight: FontWeight.bold)),
           Text('₹${net.abs().toStringAsFixed(2)} ',
               style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: net < 0 ? Colors.red : Colors.green)),
+                  fontWeight: FontWeight.bold, color: net < 0 ? Colors.red : Colors.green)),
           Text(net < 0 ? 'Cr' : 'Dr',
               style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: net < 0 ? Colors.red : Colors.green)),
+                  fontWeight: FontWeight.bold, color: net < 0 ? Colors.red : Colors.green)),
         ]),
       ],
     ),
@@ -350,17 +268,14 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
           child: Text('$label:',
               style: const TextStyle(fontWeight: FontWeight.bold))),
       Text('₹${amt.toStringAsFixed(2)}',
-          style: const TextStyle(
-              fontWeight: FontWeight.bold, color: Colors.green)),
+          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
     ],
   );
 
-  // ——————————————————— snackbar full text ————————————————
   void _showFullText(BuildContext ctx, String text) {
     Get.snackbar(
       '', '',
-      titleText: const Text('Details',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
+      titleText: const Text('Details', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
       messageText: Text(text, style: const TextStyle(color: Colors.black)),
       snackPosition: SnackPosition.BOTTOM,
       backgroundColor: Colors.white,
@@ -370,9 +285,75 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
       duration: const Duration(seconds: 4),
       animationDuration: const Duration(milliseconds: 300),
       forwardAnimationCurve: Curves.easeOut,
-      boxShadows: const [
-        BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4)),
+      boxShadows: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))],
+    );
+  }
+}
+
+class _LedgerSource extends DataTableSource {
+  final List txns;
+  final BuildContext context;
+
+  _LedgerSource(this.txns, this.context);
+
+  double bal = 0;
+
+  @override
+  DataRow? getRow(int index) {
+    if (index >= txns.length) return null;
+    final t = txns[index];
+
+    if (index == 0) bal = 0;
+    if (t.isDr) {
+      bal += t.amount;
+    } else {
+      bal -= t.amount;
+    }
+
+    return DataRow.byIndex(
+      index: index,
+      color: MaterialStateProperty.all(index.isEven ? Colors.white : Colors.green[50]),
+      cells: [
+        DataCell(Text(DateFormat('dd/MM/yy').format(t.transactionDate))),
+        DataCell(
+          SizedBox(
+            width: 120,
+            child: Text(
+              t.narrations,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          onTap: () {
+            Get.snackbar(
+              '', '',
+              titleText: const Text('Details',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
+              messageText: Text(t.narrations, style: const TextStyle(color: Colors.black)),
+              snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: Colors.white,
+              borderRadius: 12,
+              margin: const EdgeInsets.all(16),
+              snackStyle: SnackStyle.FLOATING,
+              duration: const Duration(seconds: 4),
+            );
+          },
+        ),
+        DataCell(Center(child: Text(t.invoiceNo?.toString() ?? '-'))),
+        DataCell(Text(t.isDr ? t.amount.toStringAsFixed(2) : '-')),
+        DataCell(Text(!t.isDr ? t.amount.toStringAsFixed(2) : '-')),
+        DataCell(Text(
+          '₹${bal.toStringAsFixed(2)}',
+          style: TextStyle(color: bal < 0 ? Colors.red : Colors.green),
+        )),
       ],
     );
   }
+
+  @override
+  bool get isRowCountApproximate => false;
+  @override
+  int get rowCount => txns.length;
+  @override
+  int get selectedRowCount => 0;
 }
