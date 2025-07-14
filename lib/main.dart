@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'Screens/outstanding_screen.dart';
+import 'Screens/customer_ledger_screen.dart';
 import 'Screens/sales_screen.dart';
 import 'bindings/initial_bindings.dart';
 import 'controllers/customerLedger_Controller.dart';

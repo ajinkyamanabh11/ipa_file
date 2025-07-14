@@ -11,7 +11,7 @@ import 'stock_Screens/item_type_screen.dart';      // we’ll navigate by route 
 import 'stock_Screens/item_list_screen.dart';
 import 'customer_ledger_screen.dart';
 import 'supplier_ledger_screen.dart';
-import 'outstanding_screen.dart';
+import 'customer_ledger_screen.dart';
 import 'profit_screen.dart';
 import 'transactions_screen.dart';
 import 'sales_screen.dart';                        // only for Grid preview icon
