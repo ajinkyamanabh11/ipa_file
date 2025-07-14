@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import '../controllers/sales_controller.dart';
+import '../widget/animated_Dots_LoadingText.dart';
 import '../widget/custom_app_bar.dart';
 
 class SalesScreen extends StatefulWidget {
@@ -59,7 +60,7 @@ class _SalesScreenState extends State<SalesScreen> {
         padding: const EdgeInsets.all(12),
         child: Obx(() {
           if (sc.isLoading.value)
-            return const Center(child: CircularProgressIndicator());
+            return const Center(child: DotsWaveLoadingText());
           if (sc.error.value != null)
             return Center(child: Text('❌ ${sc.error.value!}'));
 
