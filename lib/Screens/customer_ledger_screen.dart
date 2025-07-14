@@ -84,6 +84,7 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
                   ],
                 ),
               ),
+              //SizedBox(height: 8,),
               // 👉 Floating Totals at the Bottom
               Positioned(
                 bottom: 0,
