@@ -3,7 +3,7 @@ import 'package:get/get.dart';
 import 'Screens/outstanding_screen.dart';
 import 'Screens/sales_screen.dart';
 import 'bindings/initial_bindings.dart';
-import 'controllers/outstanding_controller.dart';
+import 'controllers/customerLedger_Controller.dart';
 import 'controllers/sales_controller.dart';
 import 'routes/routes.dart';                      // ← import constants
 import 'screens/login_screen.dart';
@@ -49,9 +49,9 @@ class MyApp extends StatelessWidget {
         ),
         GetPage(
           name: Routes.outstanding,
-          page: () => OutstandingScreen(),
+          page: () => CustomerLedger_Screen(),
           binding: BindingsBuilder(() {
-            Get.lazyPut<OutstandingController>(() => OutstandingController());
+            Get.lazyPut<CustomerLedger_Controller>(() => CustomerLedger_Controller());
           }),
         ),
       ],

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import '../controllers/outstanding_controller.dart';
+import '../controllers/customerLedger_Controller.dart';
 import '../widget/custom_app_bar.dart';
 
-class OutstandingScreen extends StatelessWidget {
-  OutstandingScreen({super.key});
-  final ctrl = Get.put(OutstandingController());
+class CustomerLedger_Screen extends StatelessWidget {
+  CustomerLedger_Screen({super.key});
+  final ctrl = Get.put(CustomerLedger_Controller());
   final TextEditingController search = TextEditingController();
 
   @override

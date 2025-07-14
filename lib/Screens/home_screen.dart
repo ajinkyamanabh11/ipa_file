@@ -1,6 +1,7 @@
 // lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../util/dashboard_tiles.dart.dart';
 
 import '../controllers/google_signin_controller.dart';
 import '../routes/routes.dart';                     // ⬅ route constants
@@ -67,49 +68,52 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       key: _scaffoldKey,
       drawer: Drawer(
-        child: Column(
-          children: [
-            ClipPath(
-              clipper: WaveClipper(),
-              child: DrawerHeader(
-                decoration: const BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage("assets/appbarimg.png"),
-                    fit: BoxFit.cover,
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              ClipPath(
+                clipper: WaveClipper(),
+                child: DrawerHeader(
+                  decoration: const BoxDecoration(
+                    image: DecorationImage(
+                      image: AssetImage("assets/appbarimg.png"),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  child: Row(
+                    children: const [
+                      CircleAvatar(radius: 30, backgroundImage: AssetImage('assets/applogo.png')),
+                      SizedBox(width: 16),
+                      Text("Kisan Krushi Menu",
+                          style: TextStyle(fontSize: 20, color: Colors.white)),
+                    ],
                   ),
                 ),
-                child: Row(
-                  children: const [
-                    CircleAvatar(radius: 30, backgroundImage: AssetImage('assets/applogo.png')),
-                    SizedBox(width: 16),
-                    Text("Kisan Krushi Menu",
-                        style: TextStyle(fontSize: 20, color: Colors.white)),
-                  ],
-                ),
               ),
-            ),
-            _buildDrawerItem(Icons.dashboard, "Dashboard", () {}),
-            _buildDrawerItem(Icons.person, "Profile", () {}),
-            _buildDrawerItem(Icons.inventory, "Stock",
-                    () => navigateTo(Routes.itemTypes)),
-            _buildDrawerItem(Icons.point_of_sale, "Sales",
-                    () => navigateTo(Routes.sales)),
-            _buildDrawerItem(Icons.people, "Customer Ledger",
-                    () => navigateTo(Routes.customerLedger)), // add constant if needed
-            _buildDrawerItem(Icons.account_balance, "Supplier Ledger",
-                    () => navigateTo(Routes.supplierLedger)), // add constant if needed
-            _buildDrawerItem(Icons.bar_chart, "Profit",
-                    () => navigateTo(Routes.profit)), // add constant if needed
-            _buildDrawerItem(Icons.receipt_long, "All Transactions",
-                    () => navigateTo(Routes.transactions)), // add constant if needed
-            _buildDrawerItem(Icons.compare_arrows, "Sales Purchase Flow",
-                    () => navigateTo(Routes.itemTypes)),
-            const Divider(),
-            _buildDrawerItem(Icons.logout, "Logout", () async {
-              await controller.logout();
-              Get.offAllNamed(Routes.login);
-            }),
-          ],
+              ...drawerTiles.map((t) {
+                if (t.label == 'Dashboard') {
+                  return _buildDrawerItem(
+                      dashIcon(t.label), t.label, () {});            // stay on home
+                }
+                if (t.label == 'Profile') {
+                  return _buildDrawerItem(
+                      dashIcon(t.label), t.label, () {});            // TODO: add route
+                }
+                // normal navigation
+                return _buildDrawerItem(
+                  dashIcon(t.label),
+                  t.label,
+                      () => t.route.isNotEmpty ? navigateTo(t.route) : {},
+                );
+              }).toList(),
+          
+              const Divider(),
+              _buildDrawerItem(Icons.logout, "Logout", () async {
+                await controller.logout();
+                Get.offAllNamed(Routes.login);
+              }),
+            ],
+          ),
         ),
       ),
       body: Stack(
@@ -172,24 +176,14 @@ class HomeScreen extends StatelessWidget {
               crossAxisCount: 3,
               crossAxisSpacing: 12,
               mainAxisSpacing: 16,
-              children: [
-                _buildGridItem("Stock", Icons.inventory,
-                        () => navigateTo(Routes.itemTypes), Colors.green),
-                _buildGridItem("Sales", Icons.point_of_sale,
-                        () => navigateTo(Routes.sales), Colors.green),
-                _buildGridItem("Outstanding", Icons.money_off,
-                        () => navigateTo(Routes.outstanding), Colors.green),
-                _buildGridItem("Customer\nLedger", Icons.people,
-                        () => navigateTo(Routes.customerLedger), Colors.green),
-                _buildGridItem("Profit", Icons.bar_chart,
-                        () => navigateTo(Routes.profit), Colors.green),
-                _buildGridItem("Supplier\nLedger", Icons.account_balance,
-                        () => navigateTo(Routes.supplierLedger), Colors.green),
-                _buildGridItem("Transactions", Icons.receipt_long,
-                        () => navigateTo(Routes.transactions), Colors.green),
-                _buildGridItem("Sales\nFlow", Icons.swap_horiz, () {}, Colors.green),
-                _buildGridItem("Sales\nFlow", Icons.swap_horiz, () {}, Colors.green),
-              ],
+              children: dashTiles.map((t) {
+                return _buildGridItem(
+                  t.label,
+                  dashIcon(t.label),             // public helper
+                      () => t.route.isNotEmpty ? navigateTo(t.route) : {},
+                  Colors.green,
+                );
+              }).toList(),
             ),
           ),
         ],

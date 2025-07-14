@@ -59,7 +59,7 @@ class DriveCsv {
 }
 
 /// ——————————————————— controller ———————————————————
-class OutstandingController extends GetxController {
+class CustomerLedger_Controller extends GetxController {
   // Google‑sign‑in controller injected in main.dart   Get.put(GoogleSignInController());
   final gs = Get.find<GoogleSignInController>();
 
