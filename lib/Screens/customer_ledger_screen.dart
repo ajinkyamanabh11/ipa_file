@@ -54,34 +54,44 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
           if (ctrl.isLoading.value) {
             return const Center(child: DotsWaveLoadingText());
           }
+
           final names = ctrl.accounts.map((e) => e.accountName.toLowerCase()).toList();
           final txns = ctrl.filtered;
           final net = ctrl.drTotal.value - ctrl.crTotal.value;
 
-          return RefreshIndicator(
-            onRefresh: () async => ctrl.loadData(),
-            child: Column(
-              children: [
-                const SizedBox(height: 12),
-                _autocomplete(names),
-                Expanded(
-                  child: SingleChildScrollView(
-                    controller: _scrollCtrl,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 20),
-                        _messages(names),
-                        if (txns.isNotEmpty) _paginatedTable(context, txns),
-                      ],
+          return Stack(
+            children: [
+              RefreshIndicator(
+                onRefresh: () async => ctrl.loadData(),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 12),
+                    _autocomplete(names),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        controller: _scrollCtrl,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(12, 20, 12, 120), // bottom padding added
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _messages(names),
+                            if (txns.isNotEmpty) _paginatedTable(context, txns),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-                _totals(net),
-              ],
-            ),
+              ),
+              // 👉 Floating Totals at the Bottom
+              Positioned(
+                bottom: 0,
+                left: 16,
+                right: 16,
+                child: _totals(net),
+              ),
+            ],
           );
         }),
         floatingActionButton: _showBackToTop
