@@ -1,0 +1,40 @@
+import '../util/outstanding_util_helper.dart';
+
+class AllAccountsModel {
+  final int transactionNo;
+  final String transactionType;
+  final int accountCode;
+  final DateTime transactionDate;
+  final int? invoiceNo;
+  final double amount;
+  final bool isCash;
+  final bool isDr;
+  final String narrations;
+
+  AllAccountsModel({
+    required this.transactionNo,
+    required this.transactionType,
+    required this.accountCode,
+    required this.transactionDate,
+    required this.invoiceNo,
+    required this.amount,
+    required this.isCash,
+    required this.isDr,
+    required this.narrations,
+  });
+
+  factory AllAccountsModel.fromMap(Map<String, dynamic> original) {
+    final m = lowerMap(original);
+    return AllAccountsModel(
+      transactionNo   : int.tryParse(m['transactionno'].toString()) ?? 0,
+      transactionType : m['transactiontype']?.toString() ?? '',
+      accountCode     : int.tryParse(m['accountcode']?.toString() ?? '') ?? 0,
+      transactionDate: parseFlexibleDate(m['transactiondate']),
+      invoiceNo       : int.tryParse(m['invoiceno']?.toString() ?? ''),
+      amount          : double.tryParse(m['amount']?.toString() ?? '') ?? 0,
+      isCash          : m['isitcash']?.toString().toLowerCase() == 'true',
+      isDr            : m['isitdr']?.toString().toLowerCase() == 'true',
+      narrations      : m['narrations']?.toString() ?? '',
+    );
+  }
+}

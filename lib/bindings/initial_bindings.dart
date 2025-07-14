@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import '../controllers/google_signin_controller.dart';
 import '../controllers/item_detail_controller.dart';
 import '../controllers/item_type_controller.dart';
+import '../controllers/outstanding_controller.dart';
 
 class InitialBindings extends Bindings {
   @override
@@ -9,6 +10,7 @@ class InitialBindings extends Bindings {
     Get.put(GoogleSignInController());
     Get.put(ItemTypeController());
     Get.put(ItemDetailController());
+    Get.lazyPut<OutstandingController>(() => OutstandingController(), fenix: true);
 
   }
 }

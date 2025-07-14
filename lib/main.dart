@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'Screens/outstanding_screen.dart';
 import 'Screens/sales_screen.dart';
 import 'bindings/initial_bindings.dart';
+import 'controllers/outstanding_controller.dart';
 import 'controllers/sales_controller.dart';
 import 'routes/routes.dart';                      // ← import constants
 import 'screens/login_screen.dart';
@@ -43,6 +45,13 @@ class MyApp extends StatelessWidget {
           page: () => const SalesScreen(),
           binding: BindingsBuilder(() {
             Get.lazyPut<SalesController>(() => SalesController());
+          }),
+        ),
+        GetPage(
+          name: Routes.outstanding,
+          page: () => OutstandingScreen(),
+          binding: BindingsBuilder(() {
+            Get.lazyPut<OutstandingController>(() => OutstandingController());
           }),
         ),
       ],
