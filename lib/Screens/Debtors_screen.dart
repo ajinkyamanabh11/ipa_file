@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../controllers/customerLedger_Controller.dart';
+import '../widget/animated_Dots_LoadingText.dart';
 import '../widget/custom_app_bar.dart';
 
 class DebtorsScreen extends StatefulWidget {
@@ -32,7 +33,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
       body: Obx(() {
         // ── 1. loading / error ──────────────────────────────────────────────
         if (ctrl.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: DotsWaveLoadingText());
         }
         if (ctrl.error.value != null) {
           return Center(
@@ -133,8 +134,8 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                           boxShadow: const [
                             BoxShadow(
                                 color: Colors.black12,
-                                blurRadius: 4,
-                                offset: Offset(0, 2)),
+                                blurRadius: 2,
+                                offset: Offset(0, 4)),
                           ],
                         ),
                         child: IntrinsicHeight(
