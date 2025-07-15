@@ -15,7 +15,7 @@ class SoftAgriPath {
   /// Build the 3‑segment list.
   static Future<List<String>> build(GoogleDriveService drive) async {
     // 1️⃣ find “SoftAgri_Backups” folder on Drive
-    final rootId = await drive.folderId(_root);
+    final rootId = await drive.folderId([_root]);
 
     // 2️⃣ download Financialyear.csv (always in root)
     final finCsvId  = await drive.fileId(_finFile, rootId);
