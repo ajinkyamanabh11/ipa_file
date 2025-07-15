@@ -1,164 +1,69 @@
-import 'dart:convert';
-
-import 'package:csv/csv.dart';
 import 'package:get/get.dart';
-import 'package:http/http.dart' as http;
 
-import 'google_signin_controller.dart';
+import '../constants/paths.dart';
+import '../services/google_drive_service.dart';
+import '../util/csv_utils.dart';
+import 'base_remote_controller.dart';
 
-class ItemTypeController extends GetxController {
-  // ──────────────────────── PUBLIC STATE ────────────────────────
-  var allItemTypes     = <String>[].obs;                   // All distinct types
-  var filteredItemTypes = <String>[].obs;                  // Search results
-  var typeCounts       = <String, int>{}.obs;              // #items per type
-  var allItems         = <Map<String, dynamic>>[].obs;     // Every row of ItemMaster
-  var itemDetails      = <String, Map<String, dynamic>>{}.obs; // newest detail per code
+class ItemTypeController extends GetxController with BaseRemoteController {
+  final drive = Get.find<GoogleDriveService>();
 
-  var isLoading = false.obs;
-  var error      = RxnString();
+  // ─┤ public, reactive state ├─────────────────────────────────
+  final allItemTypes      = <String>[].obs;
+  final filteredItemTypes = <String>[].obs;
+  final typeCounts        = <String,int>{}.obs;
+  final allItems          = <Map<String,dynamic>>[].obs;                // rows of ItemMaster
+  final itemDetails       = <String, Map<String,dynamic>>{}.obs;        // newest batch per code
 
-  // ──────────────────────── PRIVATE ────────────────────────
-  late final GoogleSignInController _google;
-
-  // ──────────────────────── LIFECYCLE ────────────────────────
   @override
   void onInit() {
     super.onInit();
-    _google = Get.find<GoogleSignInController>();
-    fetchItemTypes();                           // kick‑off immediately
+    guard(_load);                       // initial fetch
   }
 
-  // ──────────────────────── SEARCH HELPER ────────────────────────
-  void search(String query) {
+  /// Used by pull‑to‑refresh in both screens
+  Future<void> fetchItemTypes({bool silent = false}) async =>
+      guard(() => _load(silent: silent));
+
+  void search(String q) {
     filteredItemTypes.value = allItemTypes
-        .where((t) => t.toLowerCase().contains(query.toLowerCase()))
+        .where((t) => t.toLowerCase().contains(q.toLowerCase()))
         .toList();
   }
 
-  // ──────────────────────── MAIN FETCH ────────────────────────
-  Future<void> fetchItemTypes({bool silent = false}) async {
+  // ───────────────────────────────────────────────────────────
+  Future<void> _load({bool silent = false}) async {
     if (!silent) isLoading.value = true;
-    error.value = null;
 
-    try {
-      final auth = await _google.getAuthHeaders();
-      if (auth == null) throw Exception('Missing auth headers');
-      final headers = {'Authorization': auth['Authorization']!};
+    final parent = await drive.folderId(kSoftAgriPath);
 
-      // 1️⃣  Walk: SoftAgri_Backups / 20252026 / softagri_csv
-      final folderNames = ['SoftAgri_Backups', '20252026', 'softagri_csv'];
-      String? parentId;
-      for (final folder in folderNames) {
-        final q = [
-          "name='$folder'",
-          "mimeType='application/vnd.google-apps.folder'",
-          "'${parentId ?? 'root'}' in parents",
-          "trashed=false",
-        ].join(' and ');
-        final r = await http.get(
-          Uri.parse(
-              'https://www.googleapis.com/drive/v3/files?q=${Uri.encodeQueryComponent(q)}&fields=files(id)&spaces=drive'),
-          headers: headers,
-        );
-        final list = (json.decode(r.body)['files'] as List);
-        if (list.isEmpty) throw Exception("Folder '$folder' not found");
-        parentId = list.first['id'];
-      }
+    // 1️⃣  ItemMaster.csv ➜ allItems  +  counts
+    final masterId   = await drive.fileId('ItemMaster.csv', parent);
+    final masterRows = CsvUtils.toMaps(await drive.downloadCsv(masterId));
 
-      // 2️⃣  Download ItemMaster.csv
-      await _fetchItemMaster(parentId!, headers);
-
-      // 3️⃣  Download ItemDetail.csv
-      await _fetchItemDetails(parentId, headers);
-    } catch (e) {
-      error.value = e.toString();
-    } finally {
-      if (!silent) isLoading.value = false;
+    final counts = <String,int>{};
+    for (final r in masterRows) {
+      final type = r['ItemType']?.toString() ?? '';
+      counts[type] = (counts[type] ?? 0) + 1;
     }
-  }
-
-  // ──────────────────────── HELPERS ────────────────────────
-  Future<void> _fetchItemMaster(String parentId, Map<String, String> headers) async {
-    final fileId = await _findFileId('ItemMaster.csv', parentId, headers);
-
-    final csv = await http.get(
-      Uri.parse('https://www.googleapis.com/drive/v3/files/$fileId?alt=media'),
-      headers: headers,
-    );
-    if (csv.statusCode != 200) throw Exception('Download ItemMaster.csv failed');
-
-    final table = const CsvToListConverter(eol: '\n').convert(csv.body);
-    final head  = table.first.cast<String>();
-
-    final idxType = head.indexOf('ItemType');
-    final idxName = head.indexOf('ItemName');
-    if (idxType == -1 || idxName == -1) {
-      throw Exception('ItemType or ItemName column missing in ItemMaster.csv');
-    }
-
-    final counts = <String, int>{};
-    final items  = <Map<String, dynamic>>[];
-
-    for (var i = 1; i < table.length; i++) {
-      final row     = table[i];
-      final type    = row[idxType].toString();
-      counts[type]  = (counts[type] ?? 0) + 1;
-
-      final map = <String, dynamic>{};
-      for (var j = 0; j < head.length; j++) map[head[j]] = row[j];
-      items.add(map);
-    }
-
-    allItems.value        = items;
-    typeCounts.value      = counts;
-    allItemTypes.value    = counts.keys.toList()..sort();
+    allItemTypes.value      = counts.keys.toList()..sort();
     filteredItemTypes.value = allItemTypes;
-  }
+    typeCounts.value        = counts;
+    allItems.value          = masterRows;
 
-  Future<void> _fetchItemDetails(String parentId, Map<String, String> headers) async {
-    final fileId = await _findFileId('ItemDetail.csv', parentId, headers);
+    // 2️⃣  ItemDetail.csv ➜ itemDetails  (newest batch per ItemCode)
+    final detailId   = await drive.fileId('ItemDetail.csv', parent);
+    final detailRows = CsvUtils.toMaps(await drive.downloadCsv(detailId));
 
-    final csv = await http.get(
-      Uri.parse('https://www.googleapis.com/drive/v3/files/$fileId?alt=media'),
-      headers: headers,
-    );
-    if (csv.statusCode != 200) throw Exception('Download ItemDetail.csv failed');
-
-    final table = const CsvToListConverter(eol: '\n').convert(csv.body);
-    final head = table.first.map((e) => e.toString().trim()).toList();
-
-    final idxCode = head.indexOf('ItemCode');
-    if (idxCode == -1) throw Exception('ItemCode missing in ItemDetail.csv');
-
-    final map = <String, Map<String, dynamic>>{};
-    for (var i = 1; i < table.length; i++) {
-      final row = table[i];
-      final code = row[idxCode]?.toString().trim();
+    final map = <String, Map<String,dynamic>>{};
+    for (final row in detailRows) {
+      final code = row['ItemCode']?.toString();
       if (code == null || code.isEmpty) continue;
-
-      map.putIfAbsent(code, () {
-        final m = <String, dynamic>{};
-        for (var j = 0; j < head.length && j < row.length; j++) {
-          m[head[j]] = row[j];
-        }
-        return m;
-      });
+      // keep the *first* row we encounter (Drive export is usually newest‑first)
+      map.putIfAbsent(code, () => row);
     }
-
     itemDetails.value = map;
-  }
 
-
-  Future<String> _findFileId(
-      String fileName, String parentId, Map<String, String> headers) async {
-    final q = Uri.encodeQueryComponent("name='$fileName' and '$parentId' in parents");
-    final r = await http.get(
-      Uri.parse(
-          'https://www.googleapis.com/drive/v3/files?q=$q&fields=files(id)'),
-      headers: headers,
-    );
-    final list = (json.decode(r.body)['files'] as List);
-    if (list.isEmpty) throw Exception("File '$fileName' not found");
-    return list.first['id'];
+    if (!silent) isLoading.value = false;
   }
 }

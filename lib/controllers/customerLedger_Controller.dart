@@ -1,133 +1,63 @@
-import 'dart:convert';
-import 'dart:developer';
-import 'package:csv/csv.dart';
 import 'package:get/get.dart';
-import 'package:googleapis/drive/v3.dart' as drive;
-import 'package:http/http.dart' as http;
 
+import '../constants/paths.dart';
+import '../services/google_drive_service.dart';
+import '../util/csv_utils.dart';
 import '../model/account_master_model.dart';
 import '../model/allaccounts_model.dart';
-import 'google_signin_controller.dart';
+import 'base_remote_controller.dart';
 
-/// ——————————————————— helpers ———————————————————
-class GoogleAuthClient extends http.BaseClient {
-  final Map<String, String> _headers;
-  final http.Client _client = http.Client();
-  GoogleAuthClient(this._headers);
-  @override
-  Future<http.StreamedResponse> send(http.BaseRequest r) =>
-      _client.send(r..headers.addAll(_headers));
-}
+class CustomerLedgerController extends GetxController with BaseRemoteController {
+  final drive = Get.find<GoogleDriveService>();
 
-class DriveCsv {
-  static Future<String> fetch({
-    required drive.DriveApi api,
-    required List<String> path, // folder path segments
-    required String fileName,
-  }) async {
-    // Walk the folder tree
-    String parentId = 'root';
-    for (final segment in path) {
-      final res = await api.files.list(
-        q: "'$parentId' in parents and name = '$segment' "
-            "and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-        spaces: 'drive',
-      );
-      if (res.files == null || res.files!.isEmpty) {
-        throw Exception('Folder not found: $segment');
-      }
-      parentId = res.files!.first.id!;
-    }
-    // Find the CSV file in the final folder
-    final list = await api.files.list(
-      q: "'$parentId' in parents and name = '$fileName' and trashed = false",
-    );
-    if (list.files == null || list.files!.isEmpty) {
-      throw Exception('$fileName not found');
-    }
-    final id = list.files!.first.id!;
-    final media =
-    await api.files.get(id, downloadOptions: drive.DownloadOptions.fullMedia)
-    as drive.Media;
-    final bytes = <int>[];
-    await for (final chunk in media.stream) bytes.addAll(chunk);
-    return utf8.decode(bytes);
-  }
-
-  static List<Map<String, dynamic>> parse(String csv) {
-    final rows =
-    const CsvToListConverter(eol: '\n', shouldParseNumbers: false).convert(csv);
-    if (rows.isEmpty) return [];
-    final headers = rows.first.map((e) => e.toString()).toList();
-    return rows.skip(1).map((row) => Map.fromIterables(headers, row)).toList();
-  }
-}
-
-/// ——————————————————— controller ———————————————————
-class CustomerLedger_Controller extends GetxController {
-  // Google‑sign‑in controller injected in main.dart
-  final gs = Get.find<GoogleSignInController>();
-
-  final accounts = <AccountModel>[].obs;
-  final lowerCaseNames = <String>[].obs;
+  // typed collections – UI relies on these getters
+  final accounts     = <AccountModel>[].obs;
   final transactions = <AllAccountsModel>[].obs;
-  final filtered = <AllAccountsModel>[].obs;
+  final filtered     = <AllAccountsModel>[].obs;
 
+  // reactive totals
   final drTotal = 0.0.obs;
   final crTotal = 0.0.obs;
-  final currentName = ''.obs;
-  final isLoading = true.obs;
-
-  final _drivePath = const ['SoftAgri_Backups', '20252026', 'softagri_csv'];
 
   @override
   void onInit() {
     super.onInit();
-    loadData();
+    guard(_load);
   }
 
-  Future<void> loadData() async {
-    try {
-      isLoading(true);
-      final headers = await gs.getAuthHeaders();
-      if (headers == null) throw 'Not signed in to Google';
-      final api = drive.DriveApi(GoogleAuthClient(headers));
+  /// allows RefreshIndicator(onRefresh: ctrl.loadData)
+  Future<void> loadData() async => guard(_load);
 
-      final accCsv =
-      await DriveCsv.fetch(api: api, path: _drivePath, fileName: 'AccountMaster.csv');
-      final allCsv =
-      await DriveCsv.fetch(api: api, path: _drivePath, fileName: 'AllAccounts.csv');
+  // ───────────────────────────────────────────────────────────
+  Future<void> _load() async {
+    final parent = await drive.folderId(kSoftAgriPath);
+    final accId  = await drive.fileId('AccountMaster.csv', parent);
+    final allId  = await drive.fileId('AllAccounts.csv', parent);
 
-      final parsedAccounts = DriveCsv.parse(accCsv).map(AccountModel.fromMap).toList();
-      accounts.assignAll(parsedAccounts);
-      lowerCaseNames.assignAll(parsedAccounts.map((e) => e.accountName.toLowerCase()));
+    accounts.value = CsvUtils
+        .toMaps(await drive.downloadCsv(accId))
+        .map(AccountModel.fromMap)
+        .toList();
 
-      transactions.assignAll(DriveCsv.parse(allCsv).map(AllAccountsModel.fromMap));
-    } catch (e) {
-      log('❌ $e');
-    } finally {
-      isLoading(false);
-    }
+    transactions.value = CsvUtils
+        .toMaps(await drive.downloadCsv(allId))
+        .map(AllAccountsModel.fromMap)
+        .toList();
   }
 
   void filterByName(String name) {
-    currentName(name);
     final acc = accounts.firstWhereOrNull(
-          (a) => a.accountName.toLowerCase() == name.toLowerCase(),
-    );
+            (a) => a.accountName.toLowerCase() == name.toLowerCase());
     if (acc == null) {
       filtered.clear();
       drTotal(0);
       crTotal(0);
       return;
     }
-    filtered.assignAll(
-      transactions.where((t) => t.accountCode == acc.accountNumber),
-    );
-    _totals();
-  }
 
-  void _totals() {
+    filtered.value =
+        transactions.where((t) => t.accountCode == acc.accountNumber).toList();
+
     double dr = 0, cr = 0;
     for (final t in filtered) {
       t.isDr ? dr += t.amount : cr += t.amount;
@@ -138,7 +68,6 @@ class CustomerLedger_Controller extends GetxController {
 
   void clearFilter() {
     filtered.clear();
-    currentName('');
     drTotal(0);
     crTotal(0);
   }
