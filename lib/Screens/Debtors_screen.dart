@@ -18,10 +18,22 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
 
   final searchCtrl = TextEditingController();
   final RxString searchQ     = ''.obs;          // text filter
-  final RxString filterType  = 'All'.obs;       // All / Customer / Supplier
+  final RxString filterType  = 'All'.obs;
+  final ScrollController listCtrl = ScrollController();
+  final RxBool          showFab  = false.obs;// All / Customer / Supplier
+
+  @override
+  void initState() {
+    super.initState();
+    listCtrl.addListener(() {
+      // show button after ~300 px of scrolling
+      showFab.value = listCtrl.offset > 300;
+    });
+  }
 
   @override
   void dispose() {
+    listCtrl.dispose();          // 👈 don’t forget
     searchCtrl.dispose();
     super.dispose();
   }
@@ -30,6 +42,18 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: CustomAppBar(title: const Text('Debtors')),
+      floatingActionButton: Obx(() => showFab.value
+          ? FloatingActionButton(
+        heroTag: 'toTopBtn',
+        backgroundColor: Colors.green,
+        onPressed: () => listCtrl.animateTo(
+          0,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOut,
+        ),
+        child: const Icon(Icons.arrow_upward,color: Colors.white,),
+      )
+          : const SizedBox.shrink()),
       body: Obx(() {
         // ── 1. loading / error ──────────────────────────────────────────────
         if (ctrl.isLoading.value) {
@@ -112,6 +136,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
             // list -----------------------------------------------------------
             Expanded(
               child: ListView.builder(
+            controller: listCtrl,
                 padding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 itemCount: debtors.length,
