@@ -40,7 +40,7 @@ class _CreditorsScreen extends State<CreditorsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppBar(title: const Text('Debtors')),
+      appBar: CustomAppBar(title: const Text('Creditors')),
       floatingActionButton: Obx(() => showFab.value
           ? FloatingActionButton(
         heroTag: 'toTopBtn',
@@ -84,7 +84,7 @@ class _CreditorsScreen extends State<CreditorsScreen> {
               .compareTo(b['name'].toString().toLowerCase()));
 
         if (creditors.isEmpty) {
-          return const Center(child: Text('No debtors found.'));
+          return const Center(child: Text('No Creditors found.'));
         }
 
         // 3️⃣ UI
