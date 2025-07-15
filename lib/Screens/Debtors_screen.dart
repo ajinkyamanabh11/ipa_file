@@ -176,6 +176,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
   // single card (Name • Area • Mobile • Balance)
   Widget _debtorTile(Map<String, dynamic> d) {
     final bal = (d['closingBalance'] as double?) ?? 0.0;
+    final type=(d['type'])??'';
     final area = d['area'] ?? '-';
     final mobile = d['mobile'] ?? '-';
 
@@ -235,7 +236,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 4),
                               label: Text(
-                                '₹${bal.toStringAsFixed(2)}',
+                                '₹${bal.toStringAsFixed(2)} Dr',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 12),

@@ -1,52 +1,50 @@
 // lib/controllers/customer_ledger_controller.dart
 import 'package:get/get.dart';
 
-import '../constants/paths.dart';              // ➜ SoftAgriPath helper
-import '../model/CustomerInfoModel.dart';
+import '../constants/paths.dart';
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
 
-// models
+// typed rows
 import '../model/account_master_model.dart';
 import '../model/allaccounts_model.dart';
-
 
 class CustomerLedgerController extends GetxController {
   final drive = Get.find<GoogleDriveService>();
 
-  // ────────────────────────────────────────────────────────────
-  //  Reactive stores
-  // ────────────────────────────────────────────────────────────
-  final accounts     = <AccountModel>[].obs;
-  final transactions = <AllAccountsModel>[].obs;
-  final customerInfo = <CustomerInfoModel>[].obs;
+  // ───────────── reactive stores ─────────────
+  final accounts        = <AccountModel>[].obs;
+  final transactions    = <AllAccountsModel>[].obs;
 
-  final debtors      = <Map<String, dynamic>>[].obs;   // balance > 0 (Dr)
-  final creditors    = <Map<String, dynamic>>[].obs;   // balance < 0 (Cr)
+  /// raw row‑maps (all headers are lower‑cased once)
+  final customerInfo    = <Map<String, dynamic>>[].obs;   // CustomerInformation.csv
+  final supplierInfo    = <Map<String, dynamic>>[].obs;   // SupplierInformation.csv
 
-  // ledger‑by‑name screen
-  final filtered     = <AllAccountsModel>[].obs;
-  final drTotal      = 0.0.obs;
-  final crTotal      = 0.0.obs;
+  final debtors   = <Map<String, dynamic>>[].obs;         // balance > 0 (Dr)
+  final creditors = <Map<String, dynamic>>[].obs;         // balance < 0 (Cr)
 
-  // status
+  // single‑name ledger screen
+  final filtered  = <AllAccountsModel>[].obs;
+  final drTotal   = 0.0.obs;
+  final crTotal   = 0.0.obs;
+
+  // status flags
   final isLoading = false.obs;
   final error     = RxnString();
 
-  // store the dynamic 3‑segment Drive path once
-  late final List<String> _softAgriPath;
+  late final List<String> _softAgriPath;                  // Drive path segments
 
-  // ──────────────────── lifecycle ─────────────────────────────
+  // ───────────── life‑cycle ─────────────
   @override
   Future<void> onInit() async {
     super.onInit();
     _softAgriPath = await SoftAgriPath.build(drive);
-    _load();                                          // first pull
+    _load();
   }
 
-  Future<void> loadData() => _load();                 // pull‑to‑refresh
+  Future<void> loadData() => _load();                     // pull‑to‑refresh
 
-  // ──────────────────── loader ───────────────────────────────
+  // ───────────── loader ─────────────
   Future<void> _load() async {
     try {
       isLoading(true);
@@ -54,30 +52,26 @@ class CustomerLedgerController extends GetxController {
 
       final parentId = await drive.folderId(_softAgriPath);
 
-      // helpers ------------------------------------------------
-      Future<String> _id(String file) => drive.fileId(file, parentId);
-
-      Future<List<Map<String, dynamic>>> _csv(String id) async {
-        // lower‑case & trim *all* headers once:
-        Map<String, dynamic> _lc(Map<String, dynamic> row) => {
-          for (final e in row.entries)
-            e.key.toString().trim().toLowerCase(): e.value
-        };
-        return CsvUtils.toMaps(await drive.downloadCsv(id))
-            .map(_lc)
-            .toList();
+      // helper ── fetch + lower‑case headers
+      Map<String, dynamic> _lc(Map<String, dynamic> row) => {
+        for (final e in row.entries)
+          e.key.toString().trim().toLowerCase(): e.value
+      };
+      Future<List<Map<String, dynamic>>> _csv(String file) async {
+        final id  = await drive.fileId(file, parentId);
+        final csv = await drive.downloadCsv(id);
+        return CsvUtils.toMaps(csv).map(_lc).toList();
       }
-      // --------------------------------------------------------
 
-      final accRows  = await _csv(await _id('AccountMaster.csv'));
-      final txnRows  = await _csv(await _id('AllAccounts.csv'));
-      final infoRows = await _csv(await _id('CustomerInformation.csv'));
+      // download three information sets
+      accounts.value     = (await _csv('AccountMaster.csv'))
+          .map(AccountModel.fromMap).toList();
+      transactions.value = (await _csv('AllAccounts.csv'))
+          .map(AllAccountsModel.fromMap).toList();
+      customerInfo.value = await _csv('CustomerInformation.csv');
+      supplierInfo.value = await _csv('SupplierInformation.csv');
 
-      accounts.value     = accRows.map(AccountModel.fromMap).toList();
-      transactions.value = txnRows.map(AllAccountsModel.fromMap).toList();
-      customerInfo.value = infoRows.map(CustomerInfoModel.fromMap).toList();
-
-      _rebuildLists();
+      _rebuildOutstanding();
     } catch (e, st) {
       error.value = e.toString();
       // ignore: avoid_print
@@ -87,36 +81,44 @@ class CustomerLedgerController extends GetxController {
     }
   }
 
-  // ──────────────────── outstanding (Dr / Cr) ────────────────
-  void _rebuildLists() {
-    // quick look‑up: accountNumber ➜ CustomerInfoModel
-    final infoMap = {
-      for (final c in customerInfo) c.accountNumber: c
+  // ───────────── outstanding lists ─────────────
+  void _rebuildOutstanding() {
+    // two quick look‑up maps
+    final custMap = {
+      for (final r in customerInfo)
+        int.tryParse(r['accountnumber']?.toString() ?? '0') ?? 0: r
+    };
+    final supMap = {
+      for (final r in supplierInfo)
+        int.tryParse(r['accountnumber']?.toString() ?? '0') ?? 0: r
     };
 
     final List<Map<String, dynamic>> drTmp = [];
     final List<Map<String, dynamic>> crTmp = [];
 
     for (final acc in accounts) {
-      final kind = acc.type.toLowerCase();
-      if (kind != 'customer' && kind != 'supplier') continue;
+      final isCust = acc.type.toLowerCase() == 'customer';
+      final isSupp = acc.type.toLowerCase() == 'supplier';
+      if (!isCust && !isSupp) continue;
 
       // net balance
       final bal = transactions
           .where((t) => t.accountCode == acc.accountNumber)
-          .fold<double>(0, (p, t) => p + (t.isDr ? t.amount : -t.amount));
-
+          .fold<double>(0,
+              (p, t) => p + (t.isDr ? t.amount : -t.amount)); // +Dr, −Cr
       if (bal == 0) continue;
 
-      final info = infoMap[acc.accountNumber];
+      // pick info from correct table
+      final infoRow = isCust ? custMap[acc.accountNumber]
+          : supMap [acc.accountNumber];
 
       final row = {
         'accountNumber' : acc.accountNumber,
         'name'          : acc.accountName,
         'type'          : acc.type,
-        'closingBalance': bal.abs(),                    // always +ve for UI
-        'mobile'        : info?.mobile ?? '-',
-        'area'          : info?.area   ?? '-',
+        'closingBalance': bal.abs(),
+        'area'          : _pickadress(infoRow),
+        'mobile'        : _pickPhone(infoRow),
         'drCr'          : bal > 0 ? 'Dr' : 'Cr',
       };
 
@@ -126,45 +128,57 @@ class CustomerLedgerController extends GetxController {
     debtors  (drTmp);
     creditors(crTmp);
   }
-  // inside CustomerLedgerController
 
+  /// find first non‑empty phone / mobile column (many exports differ)
   String _pickPhone(Map<String, dynamic>? row) {
     if (row == null) return '-';
-
     const keys = [
       'mobile', 'mobileno', 'mobile no',
       'phone',  'phoneno',  'phone no',
       'mobile_number', 'phone_number'
     ];
-
     for (final k in keys) {
       final v = row[k];
       if (v != null && v.toString().trim().isNotEmpty) return v.toString();
     }
     return '-';
   }
+  String _pickadress(Map<String,dynamic>?row){
+    if(row==null)return'';
+    const Keys=[
+      'area', 'address1' ,'address'
+    ];
+    for(final k in Keys){
+      final v=row[k];
+      if (v!=null && v.toString().trim().isNotEmpty) return v.toString();
+    }
+    return '';
+  }
 
-
-  // ──────────────────── old single‑name ledger ───────────────
+  // ───────────── old single‑name ledger helpers ─────────────
   void filterByName(String name) {
     final acc = accounts.firstWhereOrNull(
             (a) => a.accountName.toLowerCase() == name.toLowerCase());
     if (acc == null) {
       filtered.clear();
-      drTotal(0); crTotal(0);
+      drTotal(0);
+      crTotal(0);
       return;
     }
 
-    filtered.value =
-        transactions.where((t) => t.accountCode == acc.accountNumber).toList();
+    filtered.value = transactions
+        .where((t) => t.accountCode == acc.accountNumber)
+        .toList();
 
     double dr = 0, cr = 0;
     for (final t in filtered) t.isDr ? dr += t.amount : cr += t.amount;
-    drTotal(dr); crTotal(cr);
+    drTotal(dr);
+    crTotal(cr);
   }
 
   void clearFilter() {
     filtered.clear();
-    drTotal(0); crTotal(0);
+    drTotal(0);
+    crTotal(0);
   }
 }
