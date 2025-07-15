@@ -29,7 +29,7 @@ IconData dashIcon(String label) {
 const List<DashTile> dashTiles = [
   DashTile('Stock',            Routes.itemTypes),
   DashTile('Sales',            Routes.sales),
-  DashTile('Customer Ledger',  Routes.outstanding),
+  DashTile('Customer Ledger',  Routes.customerLedger),
   DashTile('Debtors',          Routes.debtors),       // ✅ fixed
   DashTile('Creditors', Routes.creditors),
   DashTile('Profit',           Routes.profit),
@@ -38,15 +38,17 @@ const List<DashTile> dashTiles = [
 ];
 
 /// drawer menu items
+/// drawer menu items
 const List<DashTile> drawerTiles = [
-DashTile('Dashboard',           ''),               // stays on home
-DashTile('Profile',             ''),               // add route later
-DashTile('Stock',               Routes.itemTypes),
-DashTile('Sales',               Routes.sales),
-DashTile('Customer Ledger',     Routes.outstanding),
-DashTile('Debtors',             Routes.debtors),    // ✅ fixedDashTile('Creditors', Routes.creditors),
-DashTile('Profit',              Routes.profit),
-DashTile('Transactions',        Routes.transactions),
-DashTile('Sales Purchase Flow', ''),               // add route later
+  DashTile('Dashboard',           ''),               // stays on home
+  DashTile('Profile',             ''),               // add route later
+  DashTile('Stock',               Routes.itemTypes),
+  DashTile('Sales',               Routes.sales),
+  DashTile('Customer Ledger',     Routes.customerLedger),
+  DashTile('Debtors',             Routes.debtors),    // ✅ fixed
+  DashTile('Creditors',           Routes.creditors),  // ✅ fixed
+  DashTile('Profit',              Routes.profit),
+  DashTile('Transactions',        Routes.transactions),
+  DashTile('Sales Purchase Flow', ''),               // add route later
 ];
 

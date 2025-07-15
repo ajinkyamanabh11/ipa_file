@@ -60,16 +60,17 @@ class MyApp extends StatelessWidget {
       ),
       navigatorObservers: [routeObserver],
       initialRoute: Routes.login,
+      // main.dart  (excerpt)
       getPages: [
-        // ────────────────── auth & home ───────────────────
+        // ------------------------------------------------ auth / home
         GetPage(name: Routes.login, page: () => const LoginScreen()),
         GetPage(name: Routes.home,  page: () =>       HomeScreen()),
 
-        // ────────────────── stock flow ────────────────────
+        // ------------------------------------------------ stock
         GetPage(name: Routes.itemTypes, page: () => const ItemTypeScreen()),
         GetPage(name: Routes.itemList,  page: () => const ItemListScreen()),
 
-        // ────────────────── sales ─────────────────────────
+        // ------------------------------------------------ sales
         GetPage(
           name: Routes.sales,
           page: () => const SalesScreen(),
@@ -78,21 +79,20 @@ class MyApp extends StatelessWidget {
           }),
         ),
 
-        // ────────────────── customer ledger (outstanding) ─
+        // -------------- ✅ Customer Ledger  (single source of truth)
         GetPage(
-          name: Routes.outstanding,
+          name: Routes.customerLedger,
           page: () => const CustomerLedger_Screen(),
           binding: BindingsBuilder(() {
             Get.lazyPut(() => CustomerLedgerController(), fenix: true);
           }),
         ),
 
-        // ────────────────── debtors screen ────────────────
+        // ------------------------------------------------ debtors / creditors
         GetPage(
-          name: Routes.debtors,                     // 👈 NEW route constant
+          name: Routes.debtors,
           page: () => DebtorsScreen(),
           binding: BindingsBuilder(() {
-            // reuse the same controller – already fenix so no duplicate
             Get.lazyPut(() => CustomerLedgerController(), fenix: true);
           }),
         ),
@@ -100,11 +100,11 @@ class MyApp extends StatelessWidget {
           name: Routes.creditors,
           page: () => const CreditorsScreen(),
           binding: BindingsBuilder(() {
-            // we already have CustomerLedgerController which holds `creditors`
             Get.lazyPut(() => CustomerLedgerController(), fenix: true);
           }),
         ),
       ],
+
     );
   }
 }

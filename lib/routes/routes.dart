@@ -1,15 +1,22 @@
 class Routes {
-  static const login           = '/login';
-  static const home            = '/home';
-  static const itemTypes       = '/itemtypes';
-  static const itemList        = '/itemlist';
-  static const itemDetail      = '/itemdetail';
-  static const sales           = '/sales';
-  static const customerLedger  = '/customerLedger';
-  static const supplierLedger  = '/supplierLedger';
-  static const profit          = '/profit';
-  static const transactions    = '/transactions';
-  static const outstanding     = '/outstanding';
-  static const debtors      = '/debtors';
+  static const login          = '/login';
+  static const home           = '/home';
+
+  // stock
+  static const itemTypes      = '/itemtypes';
+  static const itemList       = '/itemlist';
+
+  // sales
+  static const sales          = '/sales';
+
+  /// ledgers
+  static const customerLedger = '/customerLedger';   // ← canonical
+  static const supplierLedger = '/supplierLedger';
+
+  /// derived screens
+  static const debtors        = '/debtors';
   static const creditors      = '/creditors';
+
+  static const profit         = '/profit';
+  static const transactions   = '/transactions';
 }
