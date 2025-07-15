@@ -14,30 +14,29 @@ class DebtorsScreen extends StatefulWidget {
 }
 
 class _DebtorsScreenState extends State<DebtorsScreen> {
-  final ctrl       = Get.find<CustomerLedgerController>();
+  final ctrl        = Get.find<CustomerLedgerController>();
 
-  final searchCtrl = TextEditingController();
-  final RxString searchQ     = ''.obs;          // text filter
-  final RxString filterType  = 'All'.obs;
+  final searchCtrl  = TextEditingController();
+  final RxString searchQ    = ''.obs;        // text filter
+  final RxString filterType = 'All'.obs;     // All / Customer / Supplier
+
   final ScrollController listCtrl = ScrollController();
-  final RxBool          showFab  = false.obs;// All / Customer / Supplier
+  final RxBool showFab = false.obs;
 
   @override
   void initState() {
     super.initState();
-    listCtrl.addListener(() {
-      // show button after ~300 px of scrolling
-      showFab.value = listCtrl.offset > 300;
-    });
+    listCtrl.addListener(() => showFab.value = listCtrl.offset > 300);
   }
 
   @override
   void dispose() {
-    listCtrl.dispose();          // 👈 don’t forget
+    listCtrl.dispose();
     searchCtrl.dispose();
     super.dispose();
   }
 
+  // ──────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -51,11 +50,11 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
           duration: const Duration(milliseconds: 400),
           curve: Curves.easeOut,
         ),
-        child: const Icon(Icons.arrow_upward,color: Colors.white,),
+        child: const Icon(Icons.arrow_upward, color: Colors.white),
       )
           : const SizedBox.shrink()),
       body: Obx(() {
-        // ── 1. loading / error ──────────────────────────────────────────────
+        // 1️⃣ loading / error
         if (ctrl.isLoading.value) {
           return const Center(child: DotsWaveLoadingText());
         }
@@ -66,20 +65,19 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
           );
         }
 
-        // ── 2. build working list ───────────────────────────────────────────
+        // 2️⃣ build filtered list
         final debtors = [...ctrl.debtors]
-        // filter by name
           ..retainWhere((d) => d['name']
               .toString()
               .toLowerCase()
               .contains(searchQ.value.toLowerCase()))
-        // filter by type
           ..retainWhere((d) {
             if (filterType.value == 'All') return true;
-            return d['type'].toString().toLowerCase() ==
+            return d['type']
+                .toString()
+                .toLowerCase() ==
                 filterType.value.toLowerCase();
           })
-        // sort by name
           ..sort((a, b) => a['name']
               .toString()
               .toLowerCase()
@@ -89,10 +87,10 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
           return const Center(child: Text('No debtors found.'));
         }
 
-        // ── 3. UI ───────────────────────────────────────────────────────────
+        // 3️⃣ UI
         return Column(
           children: [
-            // search bar -----------------------------------------------------
+            // search bar
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
               child: TextField(
@@ -120,130 +118,29 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
               ),
             ),
 
-            // filter chips ---------------------------------------------------
+            // type filter chips
             Padding(
               padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
-              child: Obx(() => Wrap(
-                spacing: 8,
-                children: [
-                  _chip('All'),
-                  _chip('Customer'),
-                  _chip('Supplier'),
-                ],
-              )),
+              child: Obx(
+                    () => Wrap(
+                  spacing: 8,
+                  children: [
+                    _chip('All'),
+                    _chip('Customer'),
+                    _chip('Supplier'),
+                  ],
+                ),
+              ),
             ),
 
-            // list -----------------------------------------------------------
+            // list
             Expanded(
               child: ListView.builder(
-            controller: listCtrl,
+                controller: listCtrl,
                 padding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 itemCount: debtors.length,
-                itemBuilder: (_, i) {
-                  final d    = debtors[i];
-                  final bal  = (d['closingBalance'] as double?) ?? 0.0;
-                  final open = (d['openingBalance'] as double?)
-                      ?.toStringAsFixed(2) ??
-                      '-';
-
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () {},      // optional action
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: const [
-                            BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 2,
-                                offset: Offset(0, 4)),
-                          ],
-                        ),
-                        child: IntrinsicHeight(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // accent bar
-                              Container(
-                                width: 8,
-                                decoration: const BoxDecoration(
-                                  color: Colors.green,
-                                  borderRadius: BorderRadius.only(
-                                    topLeft: Radius.circular(16),
-                                    bottomLeft: Radius.circular(16),
-                                  ),
-                                ),
-                              ),
-                              // main content
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                      12, 12, 16, 12),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(d['name'] ?? '',
-                                                style: const TextStyle(
-                                                    fontWeight:
-                                                    FontWeight.w600,
-                                                    fontSize: 16),
-                                                maxLines: 2,
-                                                overflow:
-                                                TextOverflow.ellipsis),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Chip(
-                                            backgroundColor:
-                                            Colors.green.shade100,
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 4),
-                                            label: Text(
-                                              '₹${bal.toStringAsFixed(2)}',
-                                              style: const TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 12),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      _infoPair(
-                                        leftLabel: 'Type:',
-                                        leftValue: d['type'],
-                                        rightLabel: 'Dr/Cr:',
-                                        rightValue: d['drCr'],
-                                      ),
-                                      _infoPair(
-                                        leftLabel: 'Opening Bal:',
-                                        leftValue: '₹$open',
-                                        rightLabel: 'Mobile:',
-                                        rightValue: d['mobile'],
-                                      ),
-                                      _infoPair(
-                                        leftLabel: 'Area:',
-                                        leftValue: d['area'],
-                                        rightLabel: 'Account #:',
-                                        rightValue: d['accountNumber'],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
+                itemBuilder: (_, i) => _debtorTile(debtors[i]),
               ),
             ),
           ],
@@ -252,20 +149,19 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
     );
   }
 
-  // ---------- filter chip ----------
-  Widget _chip(String label) => ChoiceChip(
+  // ──────────────────── helpers ─────────────────────────────
+  ChoiceChip _chip(String label) => ChoiceChip(
     label: Text(label),
     selected: filterType.value == label,
     selectedColor: Colors.green.shade300,
     onSelected: (_) => filterType.value = label,
   );
 
-  // ---------- badge helpers ----------
   Widget _badge(String label, dynamic value,
       {TextAlign align = TextAlign.left}) =>
       Text.rich(
         TextSpan(
-          style: const TextStyle(fontSize: 15, color: Colors.black),
+          style: const TextStyle(fontSize: 14, color: Colors.black),
           children: [
             TextSpan(
                 text: '$label ',
@@ -277,27 +173,89 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
         softWrap: true,
       );
 
-  Widget _infoPair({
-    required String leftLabel,
-    required dynamic leftValue,
-    required String rightLabel,
-    required dynamic rightValue,
-  }) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: _badge(leftLabel, leftValue)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: _badge(rightLabel, rightValue,
-                    align: TextAlign.right),
-              ),
+  // single card (Name • Area • Mobile • Balance)
+  Widget _debtorTile(Map<String, dynamic> d) {
+    final bal = (d['closingBalance'] as double?) ?? 0.0;
+    final area = d['area'] ?? '-';
+    final mobile = d['mobile'] ?? '-';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [
+              BoxShadow(
+                  color: Colors.black12, blurRadius: 2, offset: Offset(0, 4)),
+            ],
+          ),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // accent bar
+                Container(
+                  width: 8,
+                  decoration: const BoxDecoration(
+                    color: Colors.green,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      bottomLeft: Radius.circular(16),
+                    ),
+                  ),
+                ),
+
+                // main content
+                Expanded(
+                  child: Padding(
+                    padding:
+                    const EdgeInsets.fromLTRB(12, 12, 16, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // name + balance
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                d['name'] ?? '',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Chip(
+                              backgroundColor: Colors.green.shade100,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4),
+                              label: Text(
+                                '₹${bal.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+
+                        _badge('Area:', area),
+                        _badge('Mobile:', mobile),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      );
+      ),
+    );
+  }
 }

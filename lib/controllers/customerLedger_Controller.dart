@@ -1,167 +1,152 @@
-// lib/controllers/customerLedger_Controller.dart
+// lib/controllers/customer_ledger_controller.dart
 import 'package:get/get.dart';
 
-import '../constants/paths.dart';              // ➟ holds kSoftAgriBase & helper
+import '../constants/paths.dart';              // ➜ SoftAgriPath helper
+import '../model/CustomerInfoModel.dart';
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
+
+// models
 import '../model/account_master_model.dart';
 import '../model/allaccounts_model.dart';
+
 
 class CustomerLedgerController extends GetxController {
   final drive = Get.find<GoogleDriveService>();
 
-  // ──────────────── dynamic 3‑segment Google‑Drive path ────────────────
-  late final List<String> _softAgriPath;   // ['SoftAgri_Backups', '<FY>', 'softagri_csv']
+  // ────────────────────────────────────────────────────────────
+  //  Reactive stores
+  // ────────────────────────────────────────────────────────────
+  final accounts     = <AccountModel>[].obs;
+  final transactions = <AllAccountsModel>[].obs;
+  final customerInfo = <CustomerInfoModel>[].obs;
 
-  // ──────────────── reactive data stores ───────────────────────────────
-  final accounts        = <AccountModel>[].obs;
-  final transactions    = <AllAccountsModel>[].obs;
-  final customerInfo    = <Map<String, dynamic>>[].obs;
+  final debtors      = <Map<String, dynamic>>[].obs;   // balance > 0 (Dr)
+  final creditors    = <Map<String, dynamic>>[].obs;   // balance < 0 (Cr)
 
-  // outstanding lists
-  final debtors         = <Map<String, dynamic>>[].obs; // >0  (Dr)
-  final creditors       = <Map<String, dynamic>>[].obs; // <0  (Cr)
+  // ledger‑by‑name screen
+  final filtered     = <AllAccountsModel>[].obs;
+  final drTotal      = 0.0.obs;
+  final crTotal      = 0.0.obs;
 
-  // live ledger for single‑name screen
-  final filtered        = <AllAccountsModel>[].obs;
-  final drTotal         = 0.0.obs;
-  final crTotal         = 0.0.obs;
+  // status
+  final isLoading = false.obs;
+  final error     = RxnString();
 
-  // status flags
-  final isLoading       = false.obs;
-  final error           = RxnString();
+  // store the dynamic 3‑segment Drive path once
+  late final List<String> _softAgriPath;
 
-  // ───────────────────────── lifecycle ──────────────────────────
+  // ──────────────────── lifecycle ─────────────────────────────
   @override
   Future<void> onInit() async {
     super.onInit();
-
-    // 1️⃣  build the three‑segment path once per app run
-    _softAgriPath = await SoftAgriPath.build(drive);    // helper in constants/paths.dart
-
-    // 2️⃣  load all required csvs
-    _load();
+    _softAgriPath = await SoftAgriPath.build(drive);
+    _load();                                          // first pull
   }
 
-  Future<void> loadData() => _load();                   // for RefreshIndicator
+  Future<void> loadData() => _load();                 // pull‑to‑refresh
 
-  // ───────────────────────── data fetch ─────────────────────────
+  // ──────────────────── loader ───────────────────────────────
   Future<void> _load() async {
     try {
-      isLoading.value = true;
-      error.value     = null;
+      isLoading(true);
+      error.value = null;
 
-      // 1️⃣ – resolve dynamic path
-      final pathSegments = await SoftAgriPath.build(drive);
-      print('[DEBUG] SoftAgriPath → $pathSegments');
-      final parent = await drive.folderId(pathSegments);
-      print('[DEBUG] parent‑folderId → $parent');
+      final parentId = await drive.folderId(_softAgriPath);
 
-      // 2️⃣ – resolve each CSV file
-      Future<String> _id(String file) async {
-        final id = await drive.fileId(file, parent);
-        print('[DEBUG] $file id → $id');
-        return id;
+      // helpers ------------------------------------------------
+      Future<String> _id(String file) => drive.fileId(file, parentId);
+
+      Future<List<Map<String, dynamic>>> _csv(String id) async {
+        // lower‑case & trim *all* headers once:
+        Map<String, dynamic> _lc(Map<String, dynamic> row) => {
+          for (final e in row.entries)
+            e.key.toString().trim().toLowerCase(): e.value
+        };
+        return CsvUtils.toMaps(await drive.downloadCsv(id))
+            .map(_lc)
+            .toList();
       }
+      // --------------------------------------------------------
 
-      final accId  = await _id('AccountMaster.csv');
-      final txnId  = await _id('AllAccounts.csv');
-      final infoId = await _id('CustomerInformation.csv');
+      final accRows  = await _csv(await _id('AccountMaster.csv'));
+      final txnRows  = await _csv(await _id('AllAccounts.csv'));
+      final infoRows = await _csv(await _id('CustomerInformation.csv'));
 
-      // 3️⃣ – download and parse
-      Future<List<Map<String,dynamic>>> _rows(String id, String name) async {
-        final csv = await drive.downloadCsv(id);
-        final rows = CsvUtils.toMaps(csv);
-        print('[DEBUG] $name rows → ${rows.length}');
-        return rows;
-      }
+      accounts.value     = accRows.map(AccountModel.fromMap).toList();
+      transactions.value = txnRows.map(AllAccountsModel.fromMap).toList();
+      customerInfo.value = infoRows.map(CustomerInfoModel.fromMap).toList();
 
-      accounts.value     = (await _rows(accId,  'AccountMaster'))
-          .map(AccountModel.fromMap).toList();
-
-      transactions.value = (await _rows(txnId,  'AllAccounts'))
-          .map(AllAccountsModel.fromMap).toList();
-
-      customerInfo.value = await _rows(infoId, 'CustomerInformation');
-
-      _rebuildDebtors();
-      _rebuildCreditors();
+      _rebuildLists();
     } catch (e, st) {
       error.value = e.toString();
-      print('[ERROR] $e\n$st');
+      // ignore: avoid_print
+      print('[CustomerLedgerController] $e\n$st');
     } finally {
-      isLoading.value = false;
+      isLoading(false);
     }
   }
 
-
-  // ───────────────────── outstanding builders ──────────────────
-  void _rebuildDebtors()    => _buildOutstanding(isDebtor: true);   // balance > 0
-  void _rebuildCreditors()  => _buildOutstanding(isDebtor: false);  // balance < 0
-
-  void _buildOutstanding({required bool isDebtor}) {
-    // quick lookup for mobile / area
+  // ──────────────────── outstanding (Dr / Cr) ────────────────
+  void _rebuildLists() {
+    // quick look‑up: accountNumber ➜ CustomerInfoModel
     final infoMap = {
-      for (final m in customerInfo)
-        int.tryParse(m['AccountNumber']?.toString() ?? '0') ?? 0: m
+      for (final c in customerInfo) c.accountNumber: c
     };
 
-    final out = <Map<String, dynamic>>[];
+    final List<Map<String, dynamic>> drTmp = [];
+    final List<Map<String, dynamic>> crTmp = [];
 
     for (final acc in accounts) {
-      final type = acc.type.toLowerCase();
-      if (type != 'customer' && type != 'supplier') continue;
+      final kind = acc.type.toLowerCase();
+      if (kind != 'customer' && kind != 'supplier') continue;
 
+      // net balance
       final bal = transactions
           .where((t) => t.accountCode == acc.accountNumber)
           .fold<double>(0, (p, t) => p + (t.isDr ? t.amount : -t.amount));
 
-      if (isDebtor && bal <= 0) continue;   // need positive for debtors
-      if (!isDebtor && bal >= 0) continue;  // need negative for creditors
+      if (bal == 0) continue;
 
       final info = infoMap[acc.accountNumber];
 
-      out.add({
-        'accountNumber'  : acc.accountNumber,
-        'name'           : acc.accountName,
-        'type'           : acc.type,
-        'openingBalance' : acc.openingBalance,
-        'closingBalance' : bal.abs(),               // always positive for UI
-        'drCr'           : isDebtor ? 'Dr' : 'Cr',
-        'mobile'         : info?['Mobile'] ?? '-',
-        'area'           : info?['Area']   ?? '-',
-      });
+      final row = {
+        'accountNumber' : acc.accountNumber,
+        'name'          : acc.accountName,
+        'type'          : acc.type,
+        'closingBalance': bal.abs(),                    // always +ve for UI
+        'mobile'        : info?.mobile ?? '-',
+        'area'          : info?.area   ?? '-',
+        'drCr'          : bal > 0 ? 'Dr' : 'Cr',
+      };
+
+      (bal > 0 ? drTmp : crTmp).add(row);
     }
 
-    isDebtor ? debtors(out) : creditors(out);
+    debtors  (drTmp);
+    creditors(crTmp);
   }
 
-  // ───────────────────── existing ledger helpers ─────────────────
+  // ──────────────────── old single‑name ledger ───────────────
   void filterByName(String name) {
     final acc = accounts.firstWhereOrNull(
-          (a) => a.accountName.toLowerCase() == name.toLowerCase(),
-    );
+            (a) => a.accountName.toLowerCase() == name.toLowerCase());
     if (acc == null) {
       filtered.clear();
       drTotal(0); crTotal(0);
       return;
     }
 
-    filtered.value = transactions
-        .where((t) => t.accountCode == acc.accountNumber)
-        .toList();
+    filtered.value =
+        transactions.where((t) => t.accountCode == acc.accountNumber).toList();
 
     double dr = 0, cr = 0;
-    for (final t in filtered) {
-      t.isDr ? dr += t.amount : cr += t.amount;
-    }
-    drTotal(dr);
-    crTotal(cr);
+    for (final t in filtered) t.isDr ? dr += t.amount : cr += t.amount;
+    drTotal(dr); crTotal(cr);
   }
 
   void clearFilter() {
     filtered.clear();
-    drTotal(0);
-    crTotal(0);
+    drTotal(0); crTotal(0);
   }
 }
