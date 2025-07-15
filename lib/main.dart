@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import 'Screens/Creditors_screen.dart';
 import 'bindings/initial_bindings.dart';
 import 'routes/routes.dart';
 
@@ -92,6 +93,14 @@ class MyApp extends StatelessWidget {
           page: () => DebtorsScreen(),
           binding: BindingsBuilder(() {
             // reuse the same controller – already fenix so no duplicate
+            Get.lazyPut(() => CustomerLedgerController(), fenix: true);
+          }),
+        ),
+        GetPage(
+          name: Routes.creditors,
+          page: () => const CreditorsScreen(),
+          binding: BindingsBuilder(() {
+            // we already have CustomerLedgerController which holds `creditors`
             Get.lazyPut(() => CustomerLedgerController(), fenix: true);
           }),
         ),
