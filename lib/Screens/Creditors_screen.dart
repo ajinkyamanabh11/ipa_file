@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../controllers/customerLedger_Controller.dart';
+import '../widget/animated_Dots_LoadingText.dart';
 import '../widget/custom_app_bar.dart';
 
 class CreditorsScreen extends StatefulWidget {
@@ -31,7 +32,7 @@ class _CreditorsScreenState extends State<CreditorsScreen> {
       appBar: CustomAppBar(title: const Text('Creditors')),
       body: Obx(() {
         if (ctrl.isLoading.value)   {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: DotsWaveLoadingText());
         }
         if (ctrl.error.value != null) {
           return Center(
