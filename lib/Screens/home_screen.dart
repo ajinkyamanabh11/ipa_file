@@ -10,7 +10,7 @@ import '../routes/routes.dart';                     // ⬅ route constants
 import 'stock_Screens/item_type_screen.dart';      // we’ll navigate by route now
 import 'stock_Screens/item_list_screen.dart';
 import 'customer_ledger_screen.dart';
-import 'supplier_ledger_screen.dart';
+
 import 'customer_ledger_screen.dart';
 import 'profit_screen.dart';
 import 'transactions_screen.dart';
