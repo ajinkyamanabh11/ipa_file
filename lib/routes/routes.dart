@@ -10,4 +10,5 @@ class Routes {
   static const profit          = '/profit';
   static const transactions    = '/transactions';
   static const outstanding     = '/outstanding';
+  static const debtors      = '/debtors';
 }

@@ -1,34 +1,39 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'bindings/initial_bindings.dart';
-import 'controllers/customerLedger_Controller.dart';
-import 'controllers/sales_controller.dart';
 import 'routes/routes.dart';
-import 'package:intl/date_symbol_data_local.dart';
-// ── screens ─────────────────────────────────────────────
+
+// ── controllers ──────────────────────────────────────────
+import 'controllers/sales_controller.dart';
+import 'controllers/customerLedger_Controller.dart';
+
+// ── screens ──────────────────────────────────────────────
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/stock_screens/item_type_screen.dart';
 import 'screens/stock_screens/item_list_screen.dart';
 import 'screens/sales_screen.dart';
 import 'screens/customer_ledger_screen.dart';
+import 'screens/debtors_screen.dart';          // 👈 NEW
 
-// Route‑aware animations, etc.
+/// Route‑aware animations, etc.
 final RouteObserver<ModalRoute<void>> routeObserver =
 RouteObserver<ModalRoute<void>>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  /// 1️⃣  Load date symbols for en_IN (once)
+  // 1️⃣  Load date symbols for en_IN (once)
   await initializeDateFormatting('en_IN', null);
 
-  /// 2️⃣  Register singletons
+  // 2️⃣  Register global singletons
   await InitialBindings.ensure();
 
-  /// 3️⃣  Set as default so every `DateFormat()` picks it up
+  // 3️⃣  Default locale for every DateFormat()
   Intl.defaultLocale = 'en_IN';
 
   runApp(const MyApp());
@@ -39,7 +44,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Fix for Indian locale money formatting used in screens
+    // Safety: ensure locale each rebuild
     Intl.defaultLocale = 'en_IN';
 
     return GetMaterialApp(
@@ -55,10 +60,15 @@ class MyApp extends StatelessWidget {
       navigatorObservers: [routeObserver],
       initialRoute: Routes.login,
       getPages: [
-        GetPage(name: Routes.login,     page: () => const LoginScreen()),
-        GetPage(name: Routes.home,      page: () =>       HomeScreen()),
+        // ────────────────── auth & home ───────────────────
+        GetPage(name: Routes.login, page: () => const LoginScreen()),
+        GetPage(name: Routes.home,  page: () =>       HomeScreen()),
+
+        // ────────────────── stock flow ────────────────────
         GetPage(name: Routes.itemTypes, page: () => const ItemTypeScreen()),
         GetPage(name: Routes.itemList,  page: () => const ItemListScreen()),
+
+        // ────────────────── sales ─────────────────────────
         GetPage(
           name: Routes.sales,
           page: () => const SalesScreen(),
@@ -66,10 +76,22 @@ class MyApp extends StatelessWidget {
             Get.lazyPut(() => SalesController(), fenix: true);
           }),
         ),
+
+        // ────────────────── customer ledger (outstanding) ─
         GetPage(
           name: Routes.outstanding,
           page: () => const CustomerLedger_Screen(),
           binding: BindingsBuilder(() {
+            Get.lazyPut(() => CustomerLedgerController(), fenix: true);
+          }),
+        ),
+
+        // ────────────────── debtors screen ────────────────
+        GetPage(
+          name: Routes.debtors,                     // 👈 NEW route constant
+          page: () => DebtorsScreen(),
+          binding: BindingsBuilder(() {
+            // reuse the same controller – already fenix so no duplicate
             Get.lazyPut(() => CustomerLedgerController(), fenix: true);
           }),
         ),

@@ -22,6 +22,8 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
   final searchCtrl = TextEditingController();
   final scrollCtrl = ScrollController();
 
+  final searchFocus = FocusNode();
+
   // reactive helpers (no setState)
   final RxBool   showFab  = false.obs;
   final RxString searchQ  = ''.obs;
@@ -42,6 +44,7 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
   void dispose() {
     scrollCtrl.dispose();
     searchCtrl.dispose();
+    searchFocus.dispose();
     _debounce?.cancel();
     super.dispose();
   }
@@ -124,13 +127,14 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
 
   Widget _autocomplete(List<String> names) => RawAutocomplete<String>(
     textEditingController: searchCtrl,
-    focusNode: FocusNode(),
+      focusNode: searchFocus,
     optionsBuilder: (v) => v.text.isEmpty
         ? const Iterable<String>.empty()
         : names.where((n) => n.contains(v.text.toLowerCase())),
     onSelected: (value) {
       ctrl.filterByName(value);
       searchQ.value = value;
+      searchFocus.unfocus();
       FocusManager.instance.primaryFocus?.unfocus();
     },
     fieldViewBuilder: (c, t, f, _) => TextField(
@@ -227,6 +231,7 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
           : const [10],        // fixed 10 for larger datasets
 
       columns: const [
+        DataColumn(label: Text('Sr.')),
         DataColumn(label: Text('Date')),
         DataColumn(label: SizedBox(width: 120, child: Text('Type'))),
         DataColumn(label: Text('Invoice')),
@@ -296,18 +301,20 @@ class _LedgerSource extends DataTableSource {
 
   @override
   DataRow? getRow(int index) {
-    // extra summary row
+    // ─── summary row (no Sr. number) ───────────────────────────
     if (index == txns.length) {
       final isCr = netOutstanding < 0;
       return DataRow.byIndex(
         index: index,
         color: MaterialStateProperty.all(Colors.lightGreen[100]),
         cells: [
-          const DataCell(Text('')),
-          const DataCell(Text('Closing Balance',style:TextStyle(fontWeight: FontWeight.bold))),
-          const DataCell(Text('')),
-          const DataCell(Text('')),
-          const DataCell(Text('')),
+          const DataCell(Text('')),                      // ← empty Sr.
+          const DataCell(Text('')),                      // Date blank
+          const DataCell(Text('Closing Balance',
+              style: TextStyle(fontWeight: FontWeight.bold))),
+          const DataCell(Text('-')),                     // Invoice
+          const DataCell(Text('-')),                     // Debit
+          const DataCell(Text('-')),                     // Credit
           DataCell(Text(
             '₹${netOutstanding.abs().toStringAsFixed(2)} ${isCr ? 'Cr' : 'Dr'}',
             style: TextStyle(
@@ -318,15 +325,17 @@ class _LedgerSource extends DataTableSource {
       );
     }
 
+    // ─── normal row ────────────────────────────────────────────
     final t = txns[index];
     if (index == 0) runningBal = 0;
     runningBal += t.isDr ? t.amount : -t.amount;
 
     return DataRow.byIndex(
       index: index,
-      color:
-      MaterialStateProperty.all(index.isEven ? Colors.white : Colors.green[50]),
+      color: MaterialStateProperty.all(
+          index.isEven ? Colors.white : Colors.green[50]),
       cells: [
+        DataCell(Text('${index + 1}')),                 // Sr. #
         DataCell(Text(DateFormat('dd/MM/yy').format(t.transactionDate))),
         DataCell(
           SizedBox(
@@ -336,10 +345,29 @@ class _LedgerSource extends DataTableSource {
               overflow: TextOverflow.ellipsis,
               style: t.narrations.toLowerCase() == 'opening balance'
                   ? const TextStyle(fontWeight: FontWeight.bold)
-                  : null,                         // normal style otherwise
+                  : null,
             ),
           ),
+          // 👇 show floating snackbar on tap
+          onTap: () => Get.snackbar(
+            '', '',
+            titleText: const Text('Narration',
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
+            messageText:
+            Text(t.narrations, style: const TextStyle(color: Colors.black)),
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.white,
+            borderRadius: 12,
+            margin: const EdgeInsets.all(16),
+            snackStyle: SnackStyle.FLOATING,
+            duration: const Duration(seconds: 4),
+            animationDuration: const Duration(milliseconds: 300),
+            boxShadows: const [
+              BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
+            ],
+          ),
         ),
+
         DataCell(Center(child: Text(t.invoiceNo?.toString() ?? '-'))),
         DataCell(Text(t.isDr ? t.amount.toStringAsFixed(2) : '-')),
         DataCell(Text(!t.isDr ? t.amount.toStringAsFixed(2) : '-')),
