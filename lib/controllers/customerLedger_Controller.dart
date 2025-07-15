@@ -48,35 +48,52 @@ class CustomerLedgerController extends GetxController {
   // ───────────────────────── data fetch ─────────────────────────
   Future<void> _load() async {
     try {
-      isLoading(true);
-      error.value = null;
+      isLoading.value = true;
+      error.value     = null;
 
-      /// Google‑Drive IDs with the dynamic path
-      final parentId = await drive.folderId(_softAgriPath);
+      // 1️⃣ – resolve dynamic path
+      final pathSegments = await SoftAgriPath.build(drive);
+      print('[DEBUG] SoftAgriPath → $pathSegments');
+      final parent = await drive.folderId(pathSegments);
+      print('[DEBUG] parent‑folderId → $parent');
 
-      final accId  = await drive.fileId('AccountMaster.csv',      parentId);
-      final txnId  = await drive.fileId('AllAccounts.csv',        parentId);
-      final infoId = await drive.fileId('CustomerInformation.csv', parentId);
+      // 2️⃣ – resolve each CSV file
+      Future<String> _id(String file) async {
+        final id = await drive.fileId(file, parent);
+        print('[DEBUG] $file id → $id');
+        return id;
+      }
 
-      accounts.value = CsvUtils.toMaps(await drive.downloadCsv(accId))
-          .map(AccountModel.fromMap)
-          .toList();
+      final accId  = await _id('AccountMaster.csv');
+      final txnId  = await _id('AllAccounts.csv');
+      final infoId = await _id('CustomerInformation.csv');
 
-      transactions.value = CsvUtils.toMaps(await drive.downloadCsv(txnId))
-          .map(AllAccountsModel.fromMap)
-          .toList();
+      // 3️⃣ – download and parse
+      Future<List<Map<String,dynamic>>> _rows(String id, String name) async {
+        final csv = await drive.downloadCsv(id);
+        final rows = CsvUtils.toMaps(csv);
+        print('[DEBUG] $name rows → ${rows.length}');
+        return rows;
+      }
 
-      customerInfo.value =
-          CsvUtils.toMaps(await drive.downloadCsv(infoId));
+      accounts.value     = (await _rows(accId,  'AccountMaster'))
+          .map(AccountModel.fromMap).toList();
+
+      transactions.value = (await _rows(txnId,  'AllAccounts'))
+          .map(AllAccountsModel.fromMap).toList();
+
+      customerInfo.value = await _rows(infoId, 'CustomerInformation');
 
       _rebuildDebtors();
       _rebuildCreditors();
-    } catch (e) {
+    } catch (e, st) {
       error.value = e.toString();
+      print('[ERROR] $e\n$st');
     } finally {
-      isLoading(false);
+      isLoading.value = false;
     }
   }
+
 
   // ───────────────────── outstanding builders ──────────────────
   void _rebuildDebtors()    => _buildOutstanding(isDebtor: true);   // balance > 0

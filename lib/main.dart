@@ -1,40 +1,33 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
-import 'Screens/Creditors_screen.dart';
 import 'bindings/initial_bindings.dart';
 import 'routes/routes.dart';
 
-// ── controllers ──────────────────────────────────────────
+// ── controllers (only those that still need per‑page binding) ──
 import 'controllers/sales_controller.dart';
-import 'controllers/customerLedger_Controller.dart';
 
-// ── screens ──────────────────────────────────────────────
+// ── screens ───────────────────────────────────────────────────
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/stock_screens/item_type_screen.dart';
 import 'screens/stock_screens/item_list_screen.dart';
 import 'screens/sales_screen.dart';
 import 'screens/customer_ledger_screen.dart';
-import 'screens/debtors_screen.dart';          // 👈 NEW
+import 'Screens/debtors_screen.dart';
+import 'Screens/creditors_screen.dart';
 
-/// Route‑aware animations, etc.
+/// Route‑aware animations
 final RouteObserver<ModalRoute<void>> routeObserver =
 RouteObserver<ModalRoute<void>>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1️⃣  Load date symbols for en_IN (once)
-  await initializeDateFormatting('en_IN', null);
-
-  // 2️⃣  Register global singletons
-  await InitialBindings.ensure();
-
-  // 3️⃣  Default locale for every DateFormat()
+  await initializeDateFormatting('en_IN', null); // locale symbols
+  await InitialBindings.ensure();                // register singletons
   Intl.defaultLocale = 'en_IN';
 
   runApp(const MyApp());
@@ -45,7 +38,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Safety: ensure locale each rebuild
+    // (safety) ensure locale each rebuild
     Intl.defaultLocale = 'en_IN';
 
     return GetMaterialApp(
@@ -53,24 +46,23 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1B5E20), // green.800
+          backgroundColor: Color(0xFF1B5E20),
           foregroundColor: Colors.white,
           elevation: 0,
         ),
       ),
       navigatorObservers: [routeObserver],
       initialRoute: Routes.login,
-      // main.dart  (excerpt)
       getPages: [
-        // ------------------------------------------------ auth / home
+        // ───── auth & home ──────────────────────────────────────
         GetPage(name: Routes.login, page: () => const LoginScreen()),
         GetPage(name: Routes.home,  page: () =>       HomeScreen()),
 
-        // ------------------------------------------------ stock
+        // ───── stock ────────────────────────────────────────────
         GetPage(name: Routes.itemTypes, page: () => const ItemTypeScreen()),
         GetPage(name: Routes.itemList,  page: () => const ItemListScreen()),
 
-        // ------------------------------------------------ sales
+        // ───── sales (needs its own controller) ─────────────────
         GetPage(
           name: Routes.sales,
           page: () => const SalesScreen(),
@@ -79,32 +71,11 @@ class MyApp extends StatelessWidget {
           }),
         ),
 
-        // -------------- ✅ Customer Ledger  (single source of truth)
-        GetPage(
-          name: Routes.customerLedger,
-          page: () => const CustomerLedger_Screen(),
-          binding: BindingsBuilder(() {
-            Get.lazyPut(() => CustomerLedgerController(), fenix: true);
-          }),
-        ),
-
-        // ------------------------------------------------ debtors / creditors
-        GetPage(
-          name: Routes.debtors,
-          page: () => DebtorsScreen(),
-          binding: BindingsBuilder(() {
-            Get.lazyPut(() => CustomerLedgerController(), fenix: true);
-          }),
-        ),
-        GetPage(
-          name: Routes.creditors,
-          page: () => const CreditorsScreen(),
-          binding: BindingsBuilder(() {
-            Get.lazyPut(() => CustomerLedgerController(), fenix: true);
-          }),
-        ),
+        // ───── ledger family (reuse PERMANENT controller) ───────
+        GetPage(name: Routes.customerLedger, page: () => const CustomerLedger_Screen()),
+        GetPage(name: Routes.debtors,        page: () => DebtorsScreen()),
+        GetPage(name: Routes.creditors,      page: () => const CreditorsScreen()),
       ],
-
     );
   }
 }

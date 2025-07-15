@@ -1,40 +1,45 @@
+// lib/constants/softagri_path.dart
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
 
-/// Returns the Drive path segments your existing code expects:
-///   ['SoftAgri_Backups', '<current‑FY‑folder>', 'softagri_csv']
-///
-/// Call it once (during `onInit` or before the 1st download) and
-/// cache the result – no need to hit Drive every time.
 class SoftAgriPath {
-  // ── segment 0 & 2 are fixed ────────────────────────────────────────────
-  static const String _root    = 'SoftAgri_Backups';
-  static const String _csvSub  = 'softagri_csv';
-  static const String _finFile = 'Financialyear.csv';
+  static const String _ROOT = 'SoftAgri_Backups';
+  static const String _LEAF = 'softagri_csv';
 
-  /// Build the 3‑segment list.
+  /// Returns the path: ['SoftAgri_Backups', '<yyyyyyyy+1>', 'softagri_csv']
   static Future<List<String>> build(GoogleDriveService drive) async {
-    // 1️⃣ find “SoftAgri_Backups” folder on Drive
-    final rootId = await drive.folderId([_root]);
+    try {
+      // 1️⃣  locate the top‑level "Financialyear_csv" folder
+      final fyFolderId = await drive.folderId(['Financialyear_csv']);
 
-    // 2️⃣ download Financialyear.csv (always in root)
-    final finCsvId  = await drive.fileId(_finFile, rootId);
-    final finRows   = CsvUtils.toMaps(await drive.downloadCsv(finCsvId));
+      // 2️⃣  download FinancialYear.csv
+      final fileId = await drive.fileId('FinancialYear.csv', fyFolderId);
+      final csv    = await drive.downloadCsv(fileId);
 
-    // 3️⃣ locate the row where CurrentYear <> 0
-    final current = finRows.firstWhere(
-          (m) => (m['CurrentYear']?.toString() ?? '') != '0',
-      orElse: () => {},
-    );
-    if (current.isEmpty) {
-      throw 'No active Financial Year row in $_finFile';
+      // 3️⃣  parse – we only care about the row where CurrentYear is ticked
+      final rows   = CsvUtils.toMaps(csv);   // util that turns header→map rows
+      final active = rows.firstWhere(
+            (r) => _isChecked(r['CurrentYear']),
+        orElse: () => <String, dynamic>{},
+      );
+
+      if (active.isEmpty) throw 'No CurrentYear == true row found';
+
+      final startDate = DateTime.parse(active['StartDate'].toString());
+      final startYr   = startDate.year;
+      final folder    = '$startYr${startYr + 1}';
+
+      return [_ROOT, folder, _LEAF];
+    } catch (e) {
+      // fallback keeps the app alive if Drive/db is unreachable
+      print('[SoftAgriPath] ⚠️ using fallback year (reason: $e)');
+      return [_ROOT, '20252026', _LEAF];
     }
+  }
 
-    // 4️⃣ compute the folder name, e.g. 20252026
-    final start = DateTime.parse(current['StartDate']);
-    final fyDir = '${start.year}${start.year + 1}';
-
-    // 5️⃣ return the exact 3‑segment list your code already uses
-    return [_root, fyDir, _csvSub];
+  // Accept 1 / true / yes  (case‑insensitive) as “ticked”
+  static bool _isChecked(dynamic v) {
+    final str = v?.toString().toLowerCase() ?? '';
+    return str == '1' || str == 'true' || str == 'yes';
   }
 }

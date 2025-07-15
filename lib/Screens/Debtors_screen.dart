@@ -265,7 +265,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
       {TextAlign align = TextAlign.left}) =>
       Text.rich(
         TextSpan(
-          style: const TextStyle(fontSize: 13, color: Colors.black),
+          style: const TextStyle(fontSize: 15, color: Colors.black),
           children: [
             TextSpan(
                 text: '$label ',
