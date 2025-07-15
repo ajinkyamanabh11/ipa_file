@@ -126,6 +126,24 @@ class CustomerLedgerController extends GetxController {
     debtors  (drTmp);
     creditors(crTmp);
   }
+  // inside CustomerLedgerController
+
+  String _pickPhone(Map<String, dynamic>? row) {
+    if (row == null) return '-';
+
+    const keys = [
+      'mobile', 'mobileno', 'mobile no',
+      'phone',  'phoneno',  'phone no',
+      'mobile_number', 'phone_number'
+    ];
+
+    for (final k in keys) {
+      final v = row[k];
+      if (v != null && v.toString().trim().isNotEmpty) return v.toString();
+    }
+    return '-';
+  }
+
 
   // ──────────────────── old single‑name ledger ───────────────
   void filterByName(String name) {
