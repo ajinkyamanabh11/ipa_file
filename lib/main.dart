@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import 'Screens/profit_screen.dart';
 import 'bindings/initial_bindings.dart';
 import 'routes/routes.dart';
 
@@ -75,6 +76,7 @@ class MyApp extends StatelessWidget {
         GetPage(name: Routes.customerLedger, page: () => const CustomerLedger_Screen()),
         GetPage(name: Routes.debtors,        page: () => DebtorsScreen()),
         GetPage(name: Routes.creditors,      page: () => const CreditorsScreen()),
+        GetPage(name: Routes.profit,         page: () => const ProfitScreen()),
       ],
     );
   }
