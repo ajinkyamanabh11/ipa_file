@@ -14,9 +14,9 @@ class DebtorsScreen extends StatefulWidget {
 }
 
 class _DebtorsScreenState extends State<DebtorsScreen> {
-  final ctrl        = Get.find<CustomerLedgerController>();
+  final ctrl = Get.find<CustomerLedgerController>();
 
-  final searchCtrl  = TextEditingController();
+  final searchCtrl = TextEditingController();
   final RxString searchQ    = ''.obs;        // text filter
   final RxString filterType = 'All'.obs;     // All / Customer / Supplier
 
@@ -53,99 +53,106 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
         child: const Icon(Icons.arrow_upward, color: Colors.white),
       )
           : const SizedBox.shrink()),
-      body: Obx(() {
-        // 1️⃣ loading / error
-        if (ctrl.isLoading.value) {
-          return const Center(child: DotsWaveLoadingText());
-        }
-        if (ctrl.error.value != null) {
-          return Center(
-            child: Text('❌  ${ctrl.error.value!}',
-                style: const TextStyle(color: Colors.red)),
-          );
-        }
-
-        // 2️⃣ build filtered list
-        final debtors = [...ctrl.debtors]
-          ..retainWhere((d) => d['name']
-              .toString()
-              .toLowerCase()
-              .contains(searchQ.value.toLowerCase()))
-          ..retainWhere((d) {
-            if (filterType.value == 'All') return true;
-            return d['type']
-                .toString()
-                .toLowerCase() ==
-                filterType.value.toLowerCase();
-          })
-          ..sort((a, b) => a['name']
-              .toString()
-              .toLowerCase()
-              .compareTo(b['name'].toString().toLowerCase()));
-
-        if (debtors.isEmpty) {
-          return const Center(child: Text('No debtors found.'));
-        }
-
-        // 3️⃣ UI
-        return Column(
-          children: [
-            // search bar
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-              child: TextField(
-                controller: searchCtrl,
-                decoration: InputDecoration(
-                  hintText: 'Search by name',
-                  prefixIcon: const Icon(Icons.search, color: Colors.green),
-                  suffixIcon: searchCtrl.text.isEmpty
-                      ? null
-                      : IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      searchCtrl.clear();
-                      searchQ.value = '';
-                    },
-                  ),
-                  filled: true,
-                  fillColor: Colors.green.shade50,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    borderSide: BorderSide.none,
-                  ),
+      body: Column(
+        children: [
+          // ───── search bar ─────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            child: TextField(
+              controller: searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Search by name',
+                prefixIcon: const Icon(Icons.search, color: Colors.green),
+                suffixIcon: searchCtrl.text.isEmpty
+                    ? null
+                    : IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    searchCtrl.clear();
+                    searchQ.value = '';
+                  },
                 ),
-                onChanged: (v) => searchQ.value = v,
-              ),
-            ),
-
-            // type filter chips
-            Padding(
-              padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
-              child: Obx(
-                    () => Wrap(
-                  spacing: 8,
-                  children: [
-                    _chip('All'),
-                    _chip('Customer'),
-                    _chip('Supplier'),
-                  ],
+                filled: true,
+                fillColor: Colors.green.shade50,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
                 ),
               ),
+              onChanged: (v) => searchQ.value = v,
             ),
+          ),
 
-            // list
-            Expanded(
-              child: ListView.builder(
-                controller: listCtrl,
-                padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                itemCount: debtors.length,
-                itemBuilder: (_, i) => _debtorTile(debtors[i]),
+          // ───── type filter chips ─────
+          Padding(
+            padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+            child: Obx(
+                  () => Wrap(
+                spacing: 8,
+                children: [
+                  _chip('All'),
+                  _chip('Customer'),
+                  _chip('Supplier'),
+                ],
               ),
             ),
-          ],
-        );
-      }),
+          ),
+
+          // ───── list / loading / empty / pull‑to‑refresh ─────
+          Expanded(
+            child: Obx(() {
+              // 1️⃣ full‑screen loader only on FIRST load
+              if (ctrl.isLoading.value && ctrl.debtors.isEmpty) {
+                return const Center(child: DotsWaveLoadingText());
+              }
+
+              // 2️⃣ show error, but leave search & chips in place
+              if (ctrl.error.value != null) {
+                return Center(
+                  child: Text(
+                    '❌  ${ctrl.error.value!}',
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                );
+              }
+
+              // 3️⃣ apply filters
+              final debtors = [...ctrl.debtors]
+                ..retainWhere((d) => d['name']
+                    .toString()
+                    .toLowerCase()
+                    .contains(searchQ.value.toLowerCase()))
+                ..retainWhere((d) {
+                  if (filterType.value == 'All') return true;
+                  return d['type']
+                      .toString()
+                      .toLowerCase() ==
+                      filterType.value.toLowerCase();
+                })
+                ..sort((a, b) => a['name']
+                    .toString()
+                    .toLowerCase()
+                    .compareTo(b['name'].toString().toLowerCase()));
+
+              // 4️⃣ empty‑state placeholder
+              if (debtors.isEmpty) {
+                return const Center(child: Text('No debtors found.'));
+              }
+
+              // 5️⃣ list with pull‑to‑refresh
+              return RefreshIndicator(
+                onRefresh: () => ctrl.refreshDebtors(),   // ← single call
+                child: ListView.builder(
+                  controller: listCtrl,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  itemCount: debtors.length,
+                  itemBuilder: (_, i) => _debtorTile(debtors[i]),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
     );
   }
 
@@ -176,7 +183,6 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
   // single card (Name • Area • Mobile • Balance)
   Widget _debtorTile(Map<String, dynamic> d) {
     final bal = (d['closingBalance'] as double?) ?? 0.0;
-    final type=(d['type'])??'';
     final area = d['area'] ?? '-';
     final mobile = d['mobile'] ?? '-';
 
@@ -212,8 +218,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                 // main content
                 Expanded(
                   child: Padding(
-                    padding:
-                    const EdgeInsets.fromLTRB(12, 12, 16, 12),
+                    padding: const EdgeInsets.fromLTRB(12, 12, 16, 12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -224,8 +229,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                               child: Text(
                                 d['name'] ?? '',
                                 style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 16),
+                                    fontWeight: FontWeight.w600, fontSize: 16),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -233,13 +237,14 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                             const SizedBox(width: 8),
                             Chip(
                               backgroundColor: Colors.green.shade100,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 4),
+                              padding:
+                              const EdgeInsets.symmetric(horizontal: 4),
                               label: Text(
                                 '₹${bal.toStringAsFixed(2)} Dr',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    fontSize: 12,color:Colors.green),
+                                    fontSize: 14,
+                                    color: Colors.green),
                               ),
                             ),
                           ],

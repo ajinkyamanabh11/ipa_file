@@ -32,7 +32,8 @@ class CustomerLedgerController extends GetxController {
   final isLoading = false.obs;
   final error     = RxnString();
 
-  late final List<String> _softAgriPath;                  // Drive path segments
+  late final List<String> _softAgriPath;
+
 
   // ───────────── life‑cycle ─────────────
   @override
@@ -41,13 +42,16 @@ class CustomerLedgerController extends GetxController {
     _softAgriPath = await SoftAgriPath.build(drive);
     _load();
   }
+  Future<void> refreshDebtors() async => _load(silent: true);                  // Drive path segments
+
 
   Future<void> loadData() => _load();                     // pull‑to‑refresh
 
   // ───────────── loader ─────────────
-  Future<void> _load() async {
+  Future<void> _load({bool silent=false}) async {
     try {
       isLoading(true);
+      if (!silent) isLoading(true);
       error.value = null;
 
       final parentId = await drive.folderId(_softAgriPath);
@@ -78,6 +82,7 @@ class CustomerLedgerController extends GetxController {
       print('[CustomerLedgerController] $e\n$st');
     } finally {
       isLoading(false);
+      if (!silent) isLoading(false);
     }
   }
 
