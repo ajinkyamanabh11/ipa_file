@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../controllers/item_type_controller.dart';
 import '../../main.dart';
+import '../../widget/animated_Dots_LoadingText.dart';
 import '../../widget/custom_app_bar.dart';
 import '../../widget/refresh_indicator.dart';
 import '../../widget/rounded_search_field.dart';
@@ -68,7 +69,7 @@ class _ItemTypeScreenState extends State<ItemTypeScreen> with RouteAware {
               // show a full‑screen spinner ONLY when we have nothing yet
               if (controller.isLoading.value &&
                   controller.allItemTypes.isEmpty) {
-                return const Center(child: CircularProgressIndicator());
+                return const Center(child: DotsWaveLoadingText());
               }
 
               // show error overlay but keep the rest intact
