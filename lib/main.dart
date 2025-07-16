@@ -1,9 +1,11 @@
+import 'package:demo/screens/profit_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
-import 'Screens/profit_screen.dart';
+
+import 'screens/profit_screen.dart';
 import 'bindings/initial_bindings.dart';
 import 'routes/routes.dart';
 
@@ -22,13 +24,13 @@ import 'Screens/creditors_screen.dart';
 
 /// Route‑aware animations
 final RouteObserver<ModalRoute<void>> routeObserver =
-RouteObserver<ModalRoute<void>>();
+    RouteObserver<ModalRoute<void>>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await initializeDateFormatting('en_IN', null); // locale symbols
-  await InitialBindings.ensure();                // register singletons
+  await InitialBindings.ensure(); // register singletons
   Intl.defaultLocale = 'en_IN';
 
   runApp(const MyApp());
@@ -57,11 +59,11 @@ class MyApp extends StatelessWidget {
       getPages: [
         // ───── auth & home ──────────────────────────────────────
         GetPage(name: Routes.login, page: () => const LoginScreen()),
-        GetPage(name: Routes.home,  page: () =>       HomeScreen()),
+        GetPage(name: Routes.home, page: () => HomeScreen()),
 
         // ───── stock ────────────────────────────────────────────
         GetPage(name: Routes.itemTypes, page: () => const ItemTypeScreen()),
-        GetPage(name: Routes.itemList,  page: () => const ItemListScreen()),
+        GetPage(name: Routes.itemList, page: () => const ItemListScreen()),
 
         // ───── sales (needs its own controller) ─────────────────
         GetPage(
@@ -73,10 +75,16 @@ class MyApp extends StatelessWidget {
         ),
 
         // ───── ledger family (reuse PERMANENT controller) ───────
-        GetPage(name: Routes.customerLedger, page: () => const CustomerLedger_Screen()),
-        GetPage(name: Routes.debtors,        page: () => DebtorsScreen()),
-        GetPage(name: Routes.creditors,      page: () => const CreditorsScreen()),
-        GetPage(name: Routes.profit,         page: () => const ProfitScreen()),
+        GetPage(
+          name: Routes.customerLedger,
+          page: () => const CustomerLedger_Screen(),
+        ),
+        GetPage(name: Routes.debtors, page: () => DebtorsScreen()),
+        GetPage(name: Routes.creditors, page: () => const CreditorsScreen()),
+        GetPage(
+          name: Routes.profit,
+          page: () => const ProfitReportScreen(),   // or ProfitScreen() if you kept old
+        ),
       ],
     );
   }

@@ -1,125 +1,129 @@
 import 'package:get/get.dart';
-
+import 'package:csv/csv.dart';
 import '../constants/paths.dart';
-import '../model/profit_report_models/Sales_invoice_details_row.dart';
-import '../model/profit_report_models/sale_detail.dart';
-import '../model/profit_report_models/sales_invoice_master_row.dart';
-import '../model/profit_report_models/ item_profit_summary.dart';
+import '../model/profit_report_models/BatchProfitRow_model.dart';
+import '../model/profit_report_models/ItemMasterRow_model.dart';
+import '../model/profit_report_models/SalesInvoiceDetailRow_model.dart';
+import '../model/profit_report_models/SalesInvoiceMasterRow_model.dart';
 import '../services/google_drive_service.dart';
-import '../util/csv_utils.dart';
 
-import 'base_remote_controller.dart';
-import 'item_type_controller.dart';   // optional, for item names
 
-class ProfitReportController extends GetxController
-    with BaseRemoteController {
-  // Services
-  final _drive = Get.find<GoogleDriveService>();
+class BatchProfitReportController extends GetxController {
+  final drive = Get.find<GoogleDriveService>();
 
-  // Reactive state
-  final selectedDate   = DateTime.now().obs;
-  final dailyProfit    = 0.0.obs;
-  final itemSummaries  = <ItemProfitSummary>[].obs;
+  final rows      = <BatchProfitRow>[].obs;
+  final isLoading = false.obs;
+  final error     = RxnString();
 
-  late List<String> _softAgriPath;   // ['SoftAgri_Backups', '20252026', 'softagri_csv']
+  late List<String> _softAgriPath;
 
   @override
   Future<void> onInit() async {
     super.onInit();
-    _softAgriPath = await SoftAgriPath.build(_drive);
-    guard(_load);
+    _softAgriPath = await SoftAgriPath.build(drive);
+    await loadData();
   }
 
-  /* ------------ public API ------------ */
-  Future<void> setDate(DateTime d) async {
-    selectedDate.value = d;
-    await guard(() => _load(silent: true));
-  }
-
-  /* ------------ core ------------ */
-  Future<void> _load({bool silent = false}) async {
-    if (!silent) isLoading(true);
-
+  /* ─────────── main loader ─────────── */
+  Future<void> loadData() async {
     try {
-      // 1) folder
-      final fyFolderId = await _drive.folderId(_softAgriPath);
+      isLoading(true);
+      error.value = null;
 
-      // 2) CSV download
-      final masterCsv = await _drive.downloadCsv(
-          await _drive.fileId('SalesInvoiceMaster.csv',  fyFolderId));
-      final detailCsv = await _drive.downloadCsv(
-          await _drive.fileId('SalesInvoiceDetails.csv', fyFolderId));
+      final folderId = await drive.folderId(_softAgriPath);
 
-      // 3) parse CSV → List<Map>
-      final masterMaps = CsvUtils.toMaps(masterCsv);
-      final detailMaps = CsvUtils.toMaps(detailCsv);
+      final masterCsv = await drive.downloadCsv(
+          await drive.fileId('SalesInvoiceMaster.csv', folderId));
+      final detailCsv = await drive.downloadCsv(
+          await drive.fileId('SalesInvoiceDetails.csv', folderId));
+      final itemCsv = await drive.downloadCsv(
+          await drive.fileId('ItemMaster.csv', folderId));
 
-      // 4) map to row models
-      final masterRows = masterMaps
+      final master = _tsvToMaps(masterCsv)
           .map(SalesInvoiceMasterRow.fromCsv)
-          .where((m) => m.billNo.isNotEmpty)
           .toList();
-      final detailRows = detailMaps
+      final detail = _tsvToMaps(detailCsv)
           .map(SalesInvoiceDetailRow.fromCsv)
-          .where((d) => d.billNo.isNotEmpty && d.qty > 0)
+          .toList();
+      final items = _tsvToMaps(itemCsv)
+          .map(ItemMasterRow.fromCsv)
           .toList();
 
-      // 5) index master rows by bill number
-      final masterByNo = { for (var m in masterRows) m.billNo : m };
+      final headerByBill = {for (var h in master) h.billNo: h};
+      final itemNameByCode = {for (var i in items) i.itemCode: i.itemName};
 
-      // Selected day range
-      final dayStart = DateTime(
-          selectedDate.value.year,
-          selectedDate.value.month,
-          selectedDate.value.day);
-      final dayEnd = dayStart.add(const Duration(days: 1));
-
-      // Optional item names
-      String _name(int code) {
-        final itemCtrl = Get.isRegistered<ItemTypeController>()
-            ? Get.find<ItemTypeController>() : null;
-        return itemCtrl?.allItems
-            .firstWhereOrNull((r) => r['ItemCode'] == code)
-        ?['ItemName'] ?? 'Unknown Item';
+      /* group by batchno */
+      final grouped = <String, List<SalesInvoiceDetailRow>>{};
+      for (final d in detail) {
+        final batch = d.batch.trim();
+        if (batch.isEmpty) continue;
+        grouped.putIfAbsent(batch, () => []).add(d);
       }
 
-      // 6) build SaleDetail list grouped by item
-      final salesByItem = <int, List<SaleDetail>>{};
+      final out = <BatchProfitRow>[];
+      grouped.forEach((batch, list) {
+        if (list.isEmpty) return;
 
-      for (final d in detailRows) {
-        final master = masterByNo[d.billNo];
-        if (master == null) continue;
-        if (master.entryDate.isBefore(dayStart) ||
-            master.entryDate.isAfter(dayEnd)) continue;
+        final first = list.first;
+        final qty = list.fold(0.0, (s, e) => s + e.qty);
+        final salesAmt = list.fold(0.0, (s, e) => s + e.lineTotal);
+        final purAmt = first.purchasePrice * qty;
+        final profit = salesAmt - purAmt;
+        final name = itemNameByCode[first.itemCode] ?? 'Unknown';
 
-        final sale = SaleDetail(
-          invoiceNo     : d.billNo,
-          itemCode      : d.itemCode,
-          itemName      : _name(d.itemCode),
-          packing       : d.packing,
-          quantity      : d.qty,
-          purchasePrice : d.purchasePrice,
-          sellingPrice  : d.salesPrice,
-          profit        : d.lineTotal - d.purchasePrice * d.qty,
-        );
-        salesByItem.putIfAbsent(d.itemCode, () => []).add(sale);
-      }
+        final earliest = list
+            .map((e) => headerByBill[e.billNo]?.invoiceDate ?? DateTime(1900))
+            .reduce((a, b) => a.isBefore(b) ? a : b)
+            .toIso8601String()
+            .split('T')
+            .first;
 
-      // 7) aggregate summaries
-      final summaries = salesByItem.values
-          .map(ItemProfitSummary.fromSales)
-          .toList()
-        ..sort((a, b) => b.totalProfit.compareTo(a.totalProfit));
+        out.add(BatchProfitRow(
+          date: earliest,
+          invoiceNo: first.billNo, // first encounter
+          batch: batch,
+          itemCode: first.itemCode,
+          itemName: name,
+          packing: first.packing,
+          quantity: qty,
+          salesAmount: salesAmt,
+          purchaseAmount: purAmt,
+          profit: profit,
+        ));
+      });
 
-      itemSummaries.value = summaries;
-      dailyProfit.value   =
-          summaries.fold(0.0, (s, e) => s + e.totalProfit);
-    } catch (e) {
+      out.sort((a, b) => b.profit.compareTo(a.profit));
+      rows.value = out;
+    } catch (e, st) {
       error.value = e.toString();
-      itemSummaries.clear();
-      dailyProfit.value = 0;
+      rows.clear();
+      // ignore: avoid_print
+      print('[BatchProfit] $e\n$st');
     } finally {
-      if (!silent) isLoading(false);
+      isLoading(false);
     }
+  }
+
+  /* ─────────── TSV → List<Map> helper ─────────── */
+  List<Map<String, dynamic>> _tsvToMaps(String src) {
+    // auto‑detect line ending, keep numbers as strings
+    final data = const CsvToListConverter(
+      fieldDelimiter: '\t',
+      shouldParseNumbers: false,
+    ).convert(src);
+
+    if (data.isEmpty) return [];
+
+    final header = data.first
+        .map((h) => h.toString().trim().toLowerCase())
+        .toList();
+
+    return data.skip(1).map((row) {
+      final m = <String, dynamic>{};
+      for (var i = 0; i < header.length && i < row.length; i++) {
+        m[header[i]] = row[i].toString().trim();
+      }
+      return m;
+    }).toList();
   }
 }

@@ -31,7 +31,10 @@ class InitialBindings {
     );
 
     // Item / stock logic can be recreated when needed (fenix)
-    Get.lazyPut<ItemTypeController>(() => ItemTypeController(), fenix: true);
-    Get.put<ProfitReportController>(ProfitReportController(), permanent: true);
+        Get.lazyPut<ItemTypeController>(() => ItemTypeController(), fenix: true);
+
+        // Batch‑wise profit (permanent singleton)
+        Get.put<BatchProfitReportController>(BatchProfitReportController(),
+            permanent: true);
   }
 }
