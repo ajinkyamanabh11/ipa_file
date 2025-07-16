@@ -239,7 +239,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                                 '₹${bal.toStringAsFixed(2)} Dr',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    fontSize: 12),
+                                    fontSize: 12,color:Colors.green),
                               ),
                             ),
                           ],
