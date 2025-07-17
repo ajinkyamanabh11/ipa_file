@@ -1,10 +1,13 @@
 import 'package:demo/screens/profit_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:get_storage/get_storage.dart';
+
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 
+import 'controllers/google_signin_controller.dart';
 import 'screens/profit_screen.dart';
 import 'bindings/initial_bindings.dart';
 import 'routes/routes.dart';
@@ -28,16 +31,24 @@ final RouteObserver<ModalRoute<void>> routeObserver =
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('en_IN', null);
 
-  await initializeDateFormatting('en_IN', null); // locale symbols
-  await InitialBindings.ensure(); // register singletons
-  Intl.defaultLocale = 'en_IN';
+  // 🔁 Ensure all bindings are registered
+  await InitialBindings.ensure();
 
-  runApp(const MyApp());
+  // 🔍 Perform silent sign-in BEFORE app launches
+  final signInController = Get.put(GoogleSignInController());
+  final account = await signInController.silentLogin();
+  if (account != null) {
+    signInController.user.value = account;
+  }
+
+  runApp(MyApp(isLoggedIn: account != null));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final bool isLoggedIn;
+  const MyApp({super.key,required this.isLoggedIn});
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +66,7 @@ class MyApp extends StatelessWidget {
         ),
       ),
       navigatorObservers: [routeObserver],
-      initialRoute: Routes.login,
+      initialRoute: isLoggedIn ? Routes.home : Routes.login,
       getPages: [
         // ───── auth & home ──────────────────────────────────────
         GetPage(name: Routes.login, page: () => const LoginScreen()),

@@ -1,6 +1,7 @@
 // lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../controllers/company_name.dart';
 import '../util/dashboard_tiles.dart.dart';
 
 import '../controllers/google_signin_controller.dart';
@@ -18,6 +19,7 @@ import 'sales_screen.dart';                        // only for Grid preview icon
 
 class HomeScreen extends StatelessWidget {
   HomeScreen({super.key});
+
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -145,26 +147,46 @@ class HomeScreen extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     IconButton(
                       icon: const Icon(Icons.menu, color: Colors.white),
                       onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: const [
-                        Text("Kisan Krushi",
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold)),
-                        Text("By Manabh",
-                            style: TextStyle(color: Colors.white, fontSize: 14)),
-                      ],
+                    const Spacer(),
+                    Expanded(
+                      flex: 3,
+                      child: FutureBuilder<String>(
+                        future: fetchCompanyNameFromDrive(),
+                        builder: (context, snapshot) {
+                          final company = snapshot.data ?? 'Loading ...';
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                company,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.end,
+                                softWrap: true,
+                              ),
+                              const Text(
+                                "By Manabh",
+                                style: TextStyle(color: Colors.white, fontSize: 14),
+                                textAlign: TextAlign.end,
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                     ),
                   ],
                 ),
+
+
               ),
             ),
           ),

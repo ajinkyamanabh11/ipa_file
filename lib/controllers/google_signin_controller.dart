@@ -13,7 +13,14 @@ class GoogleSignInController extends GetxController {
   Rx<GoogleSignInAccount?> user = Rx<GoogleSignInAccount?>(null);
 
   bool get isSignedIn => user.value != null;
-
+  Future<GoogleSignInAccount?> silentLogin() async {
+    final account = await _googleSignIn.signInSilently();
+    if (account != null) {
+      user.value = account;
+      log("Silent login: ${account.email}");
+    }
+    return account;
+  }
   Future<void> login() async {
     try {
       final account = await _googleSignIn.signIn();
