@@ -5,6 +5,7 @@ class RoundedSearchField extends StatelessWidget {
   final FocusNode? focusNode;
   final ValueChanged<String>? onChanged;
   final VoidCallback? onClear;
+  final String? text;
 
   const RoundedSearchField({
     super.key,
@@ -12,6 +13,7 @@ class RoundedSearchField extends StatelessWidget {
     this.focusNode,
     this.onChanged,
     this.onClear,
+    this .text,
   });
 
   @override
@@ -25,7 +27,7 @@ class RoundedSearchField extends StatelessWidget {
         onChanged: onChanged,
         style: const TextStyle(color: Colors.black),
         decoration: InputDecoration(
-          hintText: 'Search...',
+          hintText: text,
           hintStyle: const TextStyle(color: Colors.grey),
           fillColor: Colors.white, // ⬅️ White background
           filled: true,
