@@ -1,129 +1,139 @@
 import 'package:get/get.dart';
-import 'package:csv/csv.dart';
+import 'package:intl/intl.dart';
 import '../constants/paths.dart';
-import '../model/profit_report_models/BatchProfitRow_model.dart';
-import '../model/profit_report_models/ItemMasterRow_model.dart';
-import '../model/profit_report_models/SalesInvoiceDetailRow_model.dart';
-import '../model/profit_report_models/SalesInvoiceMasterRow_model.dart';
 import '../services/google_drive_service.dart';
+import '../util/csv_utils.dart';
+import 'item_type_controller.dart';
 
-
-class BatchProfitReportController extends GetxController {
+class ProfitReportController extends GetxController {
   final drive = Get.find<GoogleDriveService>();
+  final itemTypeController = Get.find<ItemTypeController>();
 
-  final rows      = <BatchProfitRow>[].obs;
-  final isLoading = false.obs;
-  final error     = RxnString();
+  DateTime fromDate = DateTime.now();
+  DateTime toDate = DateTime.now();
 
-  late List<String> _softAgriPath;
+  final batchProfits = <Map<String, dynamic>>[].obs;
+  final filteredInvoices = <Map<String, dynamic>>[].obs;
 
-  @override
-  Future<void> onInit() async {
-    super.onInit();
-    _softAgriPath = await SoftAgriPath.build(drive);
-    await loadData();
-  }
+  Future<void> loadProfitReport({
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    fromDate = startDate;
+    toDate = endDate;
+    print('📅 Loading profit report from $fromDate to $toDate');
 
-  /* ─────────── main loader ─────────── */
-  Future<void> loadData() async {
     try {
-      isLoading(true);
-      error.value = null;
+      final path = await SoftAgriPath.build(drive);
+      final folderId = await drive.folderId(path);
 
-      final folderId = await drive.folderId(_softAgriPath);
+      final fileIdMaster = await drive.fileId('SalesInvoiceMaster.csv', folderId);
+      final csvMaster = await drive.downloadCsv(fileIdMaster);
+      final masterRows = CsvUtils.toMaps(csvMaster);
+      print('📄 Loaded ${masterRows.length} rows from SalesInvoiceMaster');
 
-      final masterCsv = await drive.downloadCsv(
-          await drive.fileId('SalesInvoiceMaster.csv', folderId));
-      final detailCsv = await drive.downloadCsv(
-          await drive.fileId('SalesInvoiceDetails.csv', folderId));
-      final itemCsv = await drive.downloadCsv(
-          await drive.fileId('ItemMaster.csv', folderId));
+      final filtered = masterRows.where((r) {
+        final rawDate = r['invoicedate'] ?? r['challandate'] ?? r['receiptdate'];
+        if (rawDate == null) return false;
 
-      final master = _tsvToMaps(masterCsv)
-          .map(SalesInvoiceMasterRow.fromCsv)
-          .toList();
-      final detail = _tsvToMaps(detailCsv)
-          .map(SalesInvoiceDetailRow.fromCsv)
-          .toList();
-      final items = _tsvToMaps(itemCsv)
-          .map(ItemMasterRow.fromCsv)
-          .toList();
+        DateTime? parsedDate;
+        try {
+          final dateStr = rawDate.toString().split('T').first;
+          parsedDate = DateTime.tryParse(dateStr) ??
+              DateFormat('dd/MM/yyyy').parseStrict(dateStr);
+        } catch (_) {}
 
-      final headerByBill = {for (var h in master) h.billNo: h};
-      final itemNameByCode = {for (var i in items) i.itemCode: i.itemName};
+        return parsedDate != null &&
+            !parsedDate.isBefore(startDate) &&
+            !parsedDate.isAfter(endDate);
+      }).toList();
 
-      /* group by batchno */
-      final grouped = <String, List<SalesInvoiceDetailRow>>{};
-      for (final d in detail) {
-        final batch = d.batch.trim();
-        if (batch.isEmpty) continue;
-        grouped.putIfAbsent(batch, () => []).add(d);
+      filteredInvoices.assignAll(filtered);
+      print('📦 Filtered invoices: ${filtered.length}');
+
+      final fileIdDetails = await drive.fileId('SalesInvoiceDetails.csv', folderId);
+      final csvDetails = await drive.downloadCsv(fileIdDetails);
+      final detailRows = CsvUtils.toMaps(csvDetails);
+
+      final fileIdItem = await drive.fileId('ItemMaster.csv', folderId);
+      final csvItem = await drive.downloadCsv(fileIdItem);
+      final itemRows = CsvUtils.toMaps(csvItem);
+
+      final List<Map<String, dynamic>> results = [];
+
+      for (final inv in filtered) {
+        final invoiceNo = inv['invoiceno']?.toString().trim().toUpperCase() ?? '';
+        final invoiceDateRaw = inv['invoicedate']?.toString() ?? '';
+        final invoiceDate = invoiceDateRaw.split('T').first;
+
+        if (invoiceNo.isEmpty) continue;
+
+        final matchingLines = detailRows.where((d) {
+          final bill = d['billno']?.toString().trim().toUpperCase();
+          return bill == invoiceNo;
+        }).toList();
+
+        if (matchingLines.isEmpty) {
+          print('⚠️ No details found for invoice: $invoiceNo');
+        }
+
+        for (final d in matchingLines) {
+          final batchNo = d['batchno']?.toString().trim() ?? 'UNKNOWN';
+          final qty = num.tryParse('${d['qty']}') ?? 0;
+          final sales = double.tryParse('${d['CGSTTaxableAmt']}') ?? 0.0;
+          final packing = d['packing']?.toString() ?? '';
+          final itemCode = d['itemcode']?.toString()?.trim();
+
+          final item = itemRows.firstWhereOrNull(
+                (i) => i['itemcode']?.toString()?.trim() == itemCode,
+          );
+
+          final itemName = item?['itemname']?.toString()?.trim() ??
+              itemCode ??
+              'UNKNOWN';
+
+          final matchingDetail = itemTypeController.allItemDetailRows
+              .firstWhereOrNull((row) =>
+          row['ItemCode']?.toString()?.trim() == itemCode &&
+              (row['BatchNo']?.toString()?.trim().toLowerCase() ?? '') ==
+                  batchNo.toLowerCase());
+
+          final purcPriceWithGst =
+              double.tryParse('${matchingDetail?['PurchasePrice']}') ?? 0.0;
+
+          final purchase = purcPriceWithGst * qty;
+          final profit = sales - purchase;
+
+          final entry = {
+            'billno': invoiceNo,
+            'batchno': batchNo,
+            'qty': qty,
+            'sales': sales,
+            'purchase': purchase,
+            'profit': profit,
+            'packing': packing,
+            'itemName': itemName,
+            'date': invoiceDate,
+          };
+
+          results.add(entry);
+        }
       }
 
-      final out = <BatchProfitRow>[];
-      grouped.forEach((batch, list) {
-        if (list.isEmpty) return;
+      results.sort((a, b) =>
+          a['billno'].toString().compareTo(b['billno'].toString()));
 
-        final first = list.first;
-        final qty = list.fold(0.0, (s, e) => s + e.qty);
-        final salesAmt = list.fold(0.0, (s, e) => s + e.lineTotal);
-        final purAmt = first.purchasePrice * qty;
-        final profit = salesAmt - purAmt;
-        final name = itemNameByCode[first.itemCode] ?? 'Unknown';
+      batchProfits.assignAll(results);
+      print('[ProfitReport] ✅ Loaded ${results.length} batch entries');
 
-        final earliest = list
-            .map((e) => headerByBill[e.billNo]?.invoiceDate ?? DateTime(1900))
-            .reduce((a, b) => a.isBefore(b) ? a : b)
-            .toIso8601String()
-            .split('T')
-            .first;
-
-        out.add(BatchProfitRow(
-          date: earliest,
-          invoiceNo: first.billNo, // first encounter
-          batch: batch,
-          itemCode: first.itemCode,
-          itemName: name,
-          packing: first.packing,
-          quantity: qty,
-          salesAmount: salesAmt,
-          purchaseAmount: purAmt,
-          profit: profit,
-        ));
-      });
-
-      out.sort((a, b) => b.profit.compareTo(a.profit));
-      rows.value = out;
+      for (var entry in results) {
+        print(entry);
+      }
     } catch (e, st) {
-      error.value = e.toString();
-      rows.clear();
-      // ignore: avoid_print
-      print('[BatchProfit] $e\n$st');
-    } finally {
-      isLoading(false);
+      print('[ProfitReport] ❌ Error: $e');
+      print(st);
+      batchProfits.clear();
+      filteredInvoices.clear();
     }
-  }
-
-  /* ─────────── TSV → List<Map> helper ─────────── */
-  List<Map<String, dynamic>> _tsvToMaps(String src) {
-    // auto‑detect line ending, keep numbers as strings
-    final data = const CsvToListConverter(
-      fieldDelimiter: '\t',
-      shouldParseNumbers: false,
-    ).convert(src);
-
-    if (data.isEmpty) return [];
-
-    final header = data.first
-        .map((h) => h.toString().trim().toLowerCase())
-        .toList();
-
-    return data.skip(1).map((row) {
-      final m = <String, dynamic>{};
-      for (var i = 0; i < header.length && i < row.length; i++) {
-        m[header[i]] = row[i].toString().trim();
-      }
-      return m;
-    }).toList();
   }
 }

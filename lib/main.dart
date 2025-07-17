@@ -83,7 +83,7 @@ class MyApp extends StatelessWidget {
         GetPage(name: Routes.creditors, page: () => const CreditorsScreen()),
         GetPage(
           name: Routes.profit,
-          page: () => const ProfitReportScreen(),   // or ProfitScreen() if you kept old
+          page: () =>  ProfitReportScreen(),   // or ProfitScreen() if you kept old
         ),
       ],
     );

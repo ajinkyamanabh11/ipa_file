@@ -34,7 +34,7 @@ class InitialBindings {
         Get.lazyPut<ItemTypeController>(() => ItemTypeController(), fenix: true);
 
         // Batch‑wise profit (permanent singleton)
-        Get.put<BatchProfitReportController>(BatchProfitReportController(),
+        Get.put<ProfitReportController>(ProfitReportController(),
             permanent: true);
   }
 }

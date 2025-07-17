@@ -1,25 +1,22 @@
 import 'package:intl/intl.dart';
 
 class SalesInvoiceMasterRow {
-  final String   billNo;
+  final String invoiceno;
   final DateTime invoiceDate;
 
   SalesInvoiceMasterRow({
-    required this.billNo,
+    required this.invoiceno,
     required this.invoiceDate,
   });
 
   factory SalesInvoiceMasterRow.fromCsv(Map<String, dynamic> r) {
-    // bill number (trim to remove stray spaces)
-    final bill = r['billno']?.toString().trim() ?? '';
+    final bill = r['invoiceno']?.toString().trim() ?? '';
 
-    // raw string in CSV – could be "01/May/2025", "1‑5‑25", "2025‑05‑01"…
-    final raw  = (r['invoicedate'] ?? '').toString().trim();
+    final rawDate = (r['invoicedate'] ?? '').toString().trim();
 
     DateTime _parse(String s) {
       if (s.isEmpty) return DateTime(1900);
 
-      // try a list of formats from most to least likely
       const fmts = [
         'yyyy-MM-dd',        // 2025-05-01
         'd/MMM/yyyy',        // 1/May/2025
@@ -30,25 +27,31 @@ class SalesInvoiceMasterRow {
         'dd/MM/yyyy',        // 01/05/2025
         'd-M-yyyy',          // 1-5-2025
         'dd-MM-yyyy',        // 01-05-2025
+        'd-M-yy',            // 1-5-25
+        'dd-MM-yy',          // 01-05-25
+        'd/MM/yy',           // 1/05/25
+        'dd/MM/yy',          // 01/05/25
+        'yyyy/MM/dd',        // 2025/05/01
       ];
 
-      // 1) ISO first
-      try { return DateTime.parse(s); } catch (_) {}
+      try {
+        return DateTime.parse(s);
+      } catch (_) {}
 
-      // 2) custom formats
       for (final f in fmts) {
-        try { return DateFormat(f).parseStrict(s); } catch (_) {}
+        try {
+          return DateFormat(f).parseStrict(s);
+        } catch (_) {}
       }
 
-      // 3) give up – log once so you know what’s wrong
       // ignore: avoid_print
       print('[SalesInvoiceMasterRow] ⚠️  Could not parse date "$s" for bill "$bill"');
       return DateTime(1900);
     }
 
     return SalesInvoiceMasterRow(
-      billNo      : bill,
-      invoiceDate : _parse(raw),
+      invoiceno: bill,
+      invoiceDate: _parse(rawDate),
     );
   }
 }

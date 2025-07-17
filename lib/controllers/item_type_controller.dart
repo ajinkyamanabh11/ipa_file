@@ -16,7 +16,8 @@ class ItemTypeController extends GetxController with BaseRemoteController {
   final allItemTypes      = <String>[].obs;                       // full ItemType list
   final filteredItemTypes = <String>[].obs;                       // search‑filtered
   final typeCounts        = <String,int>{}.obs;                   // ItemType → count
-  final allItems          = <Map<String,dynamic>>[].obs;          // rows of ItemMaster
+  final allItems          = <Map<String,dynamic>>[].obs;
+  final allItemDetailRows = <Map<String, dynamic>>[].obs;// rows of ItemMaster
   final itemDetails       = <String, Map<String,dynamic>>{}.obs;  // latest batch per code
 
   // ───────────────────────── life‑cycle ────────────────────────
@@ -66,6 +67,7 @@ class ItemTypeController extends GetxController with BaseRemoteController {
     // 3️⃣  ItemDetail.csv  →  itemDetails (newest batch per ItemCode)
     final detailId   = await drive.fileId('ItemDetail.csv', parentId);
     final detailRows = CsvUtils.toMaps(await drive.downloadCsv(detailId));
+    allItemDetailRows.value = detailRows;
 
     final latest = <String, Map<String,dynamic>>{};
     for (final row in detailRows) {
