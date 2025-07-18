@@ -1,10 +1,12 @@
+// ... [existing imports]
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../controllers/item_type_controller.dart';
-import '../../main.dart';                   // routeObserver
+import '../../main.dart'; // routeObserver
 import '../../routes/routes.dart';
 import '../../widget/custom_app_bar.dart';
 import '../../widget/rounded_search_field.dart';
+import 'item_batch_screen.dart';
 
 class ItemListScreen extends StatefulWidget {
   const ItemListScreen({super.key});
@@ -23,7 +25,6 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
   late final String itemType;
   bool _showFab = false;
 
-  // ─────────────────────── lifecycle ────────────────────────────
   @override
   void initState() {
     super.initState();
@@ -56,14 +57,13 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
 
   @override
   void dispose() {
-    _scroll.dispose();          // ← prevent memory leak
+    _scroll.dispose();
     _searchController.dispose();
     _focusNode.dispose();
     routeObserver.unsubscribe(this);
     super.dispose();
   }
 
-  // ─────────────────────── helpers ──────────────────────────────
   void _applyInitialFilter() {
     filteredItems =
         controller.allItems.where((e) => e['ItemType'] == itemType).toList();
@@ -86,32 +86,6 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
     _onSearchChanged();
   }
 
-  String _formatDateShort(dynamic v) {
-    if (v == null || v.toString().isEmpty) return '-';
-    try {
-      final d = DateTime.parse(v.toString().split(' ').first);
-      const mon = [
-        '',
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec'
-      ];
-      return '${d.day.toString().padLeft(2, '0')}/${mon[d.month]}/${d.year}';
-    } catch (_) {
-      return v.toString();
-    }
-  }
-
-  // ─────────────────────── ui ───────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -157,9 +131,13 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
                     padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     child: InkWell(
-
                       borderRadius: BorderRadius.circular(16),
-                      onTap: () {},
+                      onTap: () {
+                        Get.to(() => ItemBatchScreen(
+                          itemCode: code,
+                          itemname: '${item['ItemName']}',
+                        ));
+                      },
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -190,10 +168,11 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
                               // main content
                               Expanded(
                                 child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                      12, 12, 16, 12),
+                                  padding:
+                                  const EdgeInsets.fromLTRB(12, 12, 4, 12),
                                   child: Obx(() {
-                                    final d = controller.itemDetails[code];
+                                    final d =
+                                    controller.latestDetailByCode[code];
                                     if (d == null) {
                                       return const Text('Detail loading…');
                                     }
@@ -207,63 +186,37 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
                                               child: Text(
                                                 item['ItemName'] ?? 'Unnamed',
                                                 style: const TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                    fontSize: 16),
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 16,
+                                                ),
                                                 maxLines: 2,
-                                                overflow:
-                                                TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Chip(
-                                              backgroundColor:
-                                              Colors.green.shade100,
-                                              padding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 4),
-                                              label: Text(
-                                                'MRP ₹${d['MRP'] ?? '-'}',
-                                                style: const TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                    fontSize: 12),
+                                                overflow: TextOverflow.ellipsis,
                                               ),
                                             ),
                                           ],
                                         ),
-                                        const SizedBox(height: 6),
-                                        _infoPair(
-                                          leftLabel: 'Stock:',
-                                          leftValue: d['Currentstock'],
-                                          rightLabel: 'Batch No:',
-                                          rightValue: d['BatchNo'],
-                                        ),
-                                        _infoPair(
-                                          leftLabel: 'Cash Rate:',
-                                          leftValue:
-                                          '₹${d['CashTradindPrice']}',
-                                          rightLabel: 'Expiry:',
-                                          rightValue:
-                                          _formatDateShort(d['ExpiryDate']),
-                                        ),
-                                        _infoPair(
-                                          leftLabel: 'Credit Rate:',
-                                          leftValue:
-                                          '₹${d['CreditTradindPrice']}',
-                                          rightLabel: 'Pur. Rate:',
-                                          rightValue:
-                                          '₹${d['PurchasePrice'] ?? '-'}',
-                                        ),
-                                        _infoPair(
-                                          leftLabel: 'HSN:',
-                                          leftValue: item['HSNCode'],
-                                          rightLabel: 'Item Code:',
-                                          rightValue: code,
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Item Code: $code',
+                                          style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.black),
                                         ),
                                       ],
                                     );
                                   }),
                                 ),
                               ),
+                              // right arrow
+                              const Padding(
+                                padding: EdgeInsets.only(right :30),
+                                child: Icon(
+                                  Icons.arrow_forward_ios_rounded,
+                                  size: 18,
+                                  color: Colors.grey,
+                                ),
+                              ),
+
                             ],
                           ),
                         ),
@@ -278,35 +231,4 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
       ),
     );
   }
-
-  // ─── small widgets ─────────────────────────────────────────────
-  Widget _infoPair({
-    required String leftLabel,
-    required dynamic leftValue,
-    required String rightLabel,
-    required dynamic rightValue,
-  }) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _rich(leftLabel, leftValue),
-            _rich(rightLabel, rightValue),
-          ],
-        ),
-      );
-
-  Widget _rich(String label, dynamic value) => RichText(
-    text: TextSpan(
-      style: const TextStyle(color: Colors.black),
-      children: [
-        TextSpan(
-          text: label,
-          style: const TextStyle(fontWeight: FontWeight.w500),
-        ),
-        TextSpan(text: ' ${value ?? '-'}'),
-      ],
-    ),
-  );
 }

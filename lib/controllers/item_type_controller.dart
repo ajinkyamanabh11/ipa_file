@@ -1,7 +1,5 @@
-// lib/controllers/item_type_controller.dart
 import 'package:get/get.dart';
-
-import '../constants/paths.dart';                 // ⬅️ contains SoftAgriPath.build()
+import '../constants/paths.dart';
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
 import 'base_remote_controller.dart';
@@ -9,48 +7,47 @@ import 'base_remote_controller.dart';
 class ItemTypeController extends GetxController with BaseRemoteController {
   final drive = Get.find<GoogleDriveService>();
 
-  // ───────────── dynamic three‑segment Drive path ──────────────
-  late final List<String> _softAgriPath;          // ['SoftAgri_Backups', <FY>, 'softagri_csv']
+  // ───── Drive Path ─────
+  late final List<String> _softAgriPath;
 
-  // ───────────── public reactive state ─────────────────────────
-  final allItemTypes      = <String>[].obs;                       // full ItemType list
-  final filteredItemTypes = <String>[].obs;                       // search‑filtered
-  final typeCounts        = <String,int>{}.obs;                   // ItemType → count
+  // ───── UI State ─────
+  final allItemTypes      = <String>[].obs;
+  final filteredItemTypes = <String>[].obs;
+  final typeCounts        = <String,int>{}.obs;
   final allItems          = <Map<String,dynamic>>[].obs;
-  final allItemDetailRows = <Map<String, dynamic>>[].obs;// rows of ItemMaster
-  final itemDetails       = <String, Map<String,dynamic>>{}.obs;  // latest batch per code
+  final allItemDetailRows = <Map<String, dynamic>>[].obs;
 
-  // ───────────────────────── life‑cycle ────────────────────────
+  // Key: ItemCode, Value: list of detail rows (all batches)
+  final itemDetailsByCode = <String, List<Map<String, dynamic>>>{}.obs;
+
+  // Key: ItemCode, Value: map of txt_pkg => list of rows
+  final groupedByPkg = <String, Map<String, List<Map<String, dynamic>>>>{}.obs;
+
+  // UI compatible: one row per ItemCode
+  final latestDetailByCode = <String, Map<String, dynamic>>{}.obs;
+
   @override
   Future<void> onInit() async {
     super.onInit();
-
-    // build dynamic FY path once per app run
     _softAgriPath = await SoftAgriPath.build(drive);
-
-    // initial fetch
     guard(_load);
   }
 
-  /// Pull‑to‑refresh entrypoint in both stock screens
   Future<void> fetchItemTypes({bool silent = false}) async =>
       guard(() => _load(silent: silent));
 
-  /// Local search (no Drive call)
   void search(String q) {
     filteredItemTypes.value = allItemTypes
         .where((t) => t.toLowerCase().contains(q.toLowerCase()))
         .toList();
   }
 
-  // ───────────────────────── data fetch ────────────────────────
   Future<void> _load({bool silent = false}) async {
     if (!silent) isLoading(true);
 
-    // 1️⃣  locate Drive folder for current FY
     final parentId = await drive.folderId(_softAgriPath);
 
-    // 2️⃣  ItemMaster.csv  →  allItems  +  typeCounts
+    // ───── ItemMaster.csv ─────
     final masterId   = await drive.fileId('ItemMaster.csv', parentId);
     final masterRows = CsvUtils.toMaps(await drive.downloadCsv(masterId));
 
@@ -64,21 +61,87 @@ class ItemTypeController extends GetxController with BaseRemoteController {
     typeCounts.value        = counts;
     allItems.value          = masterRows;
 
-    // 3️⃣  ItemDetail.csv  →  itemDetails (newest batch per ItemCode)
+    // ───── ItemDetail.csv ─────
     final detailId   = await drive.fileId('ItemDetail.csv', parentId);
     final detailRows = CsvUtils.toMaps(await drive.downloadCsv(detailId));
     allItemDetailRows.value = detailRows;
 
-    final latest = <String, Map<String,dynamic>>{};
-    for (final row in detailRows) {
-      final code = row['ItemCode']?.toString();
-      if (code == null || code.isEmpty) continue;
+    final seenComposite = <String>{};
+    final perCode = <String, List<Map<String, dynamic>>>{};
+    final pkgMap = <String, Map<String, List<Map<String, dynamic>>>>{};
+    final latestPerCode = <String, Map<String, dynamic>>{};
 
-      // Drive export is usually newest‑first, so keep first seen
-      latest.putIfAbsent(code, () => row);
+    for (final row in detailRows) {
+      final itemCode = row['ItemCode']?.toString() ?? '';
+      final batchNo  = row['BatchNo']?.toString() ?? '';
+      final pkg      = row['txt_pkg']?.toString() ?? '';
+
+      if (itemCode.isEmpty || batchNo.isEmpty || pkg.isEmpty) continue;
+
+      final compositeKey = '$itemCode|$batchNo|$pkg';
+      if (seenComposite.contains(compositeKey)) continue;
+
+      seenComposite.add(compositeKey);
+
+      // ✅ All batches by code
+      perCode.putIfAbsent(itemCode, () => []).add(row);
+
+      // ✅ Group by txt_pkg
+      pkgMap.putIfAbsent(itemCode, () => {});
+      pkgMap[itemCode]!.putIfAbsent(pkg, () => []).add(row);
+
+      // ✅ First seen as latest
+      latestPerCode.putIfAbsent(itemCode, () => row);
+      populateUniqueItems();
     }
-    itemDetails.value = latest;
+
+    itemDetailsByCode.value = perCode;
+    groupedByPkg.value = pkgMap;
+    latestDetailByCode.value = latestPerCode;
 
     if (!silent) isLoading(false);
+  }
+  final uniqueItemDetails = <Map<String, dynamic>>[].obs;
+
+  void populateUniqueItems() {
+    final seen = <String>{};
+    final result = <Map<String, dynamic>>[];
+
+    for (final row in allItemDetailRows) {
+      final itemCode = row['ItemCode']?.toString() ?? '';
+      final batchNo = row['BatchNo']?.toString() ?? '';
+      final pkg = row['txt_pkg']?.toString() ?? '';
+
+      final key = '$itemCode|$batchNo|$pkg';
+
+      if (itemCode.isEmpty || batchNo.isEmpty || pkg.isEmpty) continue;
+      if (seen.contains(key)) continue;
+
+      seen.add(key);
+      result.add(row);
+    }
+
+    uniqueItemDetails.value = result;
+  }
+
+  /// Filter batches for given itemCode and package
+  List<Map<String, dynamic>> getBatches(String code, {String? pkg}) {
+    final all = itemDetailsByCode[code] ?? [];
+    if (pkg == null) return all;
+    return all.where((row) => row['txt_pkg']?.toString() == pkg).toList();
+  }
+
+  /// Sort detail rows by field (asc or desc)
+  List<Map<String, dynamic>> sortDetails(
+      List<Map<String, dynamic>> rows,
+      String field, {
+        bool ascending = true,
+      }) {
+    rows.sort((a, b) {
+      final av = a[field]?.toString() ?? '';
+      final bv = b[field]?.toString() ?? '';
+      return ascending ? av.compareTo(bv) : bv.compareTo(av);
+    });
+    return rows;
   }
 }

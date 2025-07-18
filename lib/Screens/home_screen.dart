@@ -1,6 +1,8 @@
 // lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart'; // Import for DateFormat
+
 import '../controllers/company_name.dart';
 import '../util/dashboard_tiles.dart.dart';
 
@@ -12,10 +14,13 @@ import 'stock_Screens/item_type_screen.dart';      // we’ll navigate by route 
 import 'stock_Screens/item_list_screen.dart';
 import 'customer_ledger_screen.dart';
 
-import 'customer_ledger_screen.dart';
 import 'profit_screen.dart';
 import 'transactions_screen.dart';
 import 'sales_screen.dart';                        // only for Grid preview icon
+
+// Import the ProfitReportController
+import '../controllers/profit_report_controller.dart';
+
 
 class HomeScreen extends StatelessWidget {
   HomeScreen({super.key});
@@ -66,6 +71,17 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = Get.find<GoogleSignInController>();
+    final profitController = Get.find<ProfitReportController>();
+
+    // Calculate today's date once in build for use
+    final today = DateTime.now();
+    final startDate = DateTime(today.year, today.month, today.day);
+    final endDate = DateTime(today.year, today.month, today.day);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // This ensures profit data for today is loaded when the screen is first built
+      profitController.loadProfitReport(startDate: startDate, endDate: endDate);
+    });
 
     return Scaffold(
       key: _scaffoldKey,
@@ -95,20 +111,19 @@ class HomeScreen extends StatelessWidget {
               ...drawerTiles.map((t) {
                 if (t.label == 'Dashboard') {
                   return _buildDrawerItem(
-                      dashIcon(t.label), t.label, () {});            // stay on home
+                      dashIcon(t.label), t.label, () {});
                 }
                 if (t.label == 'Profile') {
                   return _buildDrawerItem(
-                      dashIcon(t.label), t.label, () {});            // TODO: add route
+                      dashIcon(t.label), t.label, () {});
                 }
-                // normal navigation
                 return _buildDrawerItem(
                   dashIcon(t.label),
                   t.label,
                       () => t.route.isNotEmpty ? navigateTo(t.route) : {},
                 );
               }).toList(),
-          
+
               const Divider(),
               _buildDrawerItem(Icons.logout, "Logout", () async {
                 await controller.logout();
@@ -120,7 +135,7 @@ class HomeScreen extends StatelessWidget {
       ),
       body: Stack(
         children: [
-          // wave image background
+          // wave image background (existing)
           Positioned(
             top: 0,
             left: 0,
@@ -138,7 +153,7 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
           ),
-          // top bar
+          // top bar (existing)
           Positioned(
             top: 0,
             left: 0,
@@ -185,14 +200,106 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-
-
               ),
             ),
           ),
-          // grid dashboard
+          // Todays Profit Card - Now with appbarimg.png background
+          Positioned(
+            top: 140,
+            left: 20,
+            right: 20,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: [
+                  BoxShadow(
+                    color:Colors.black54,
+                    spreadRadius: 1,
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+                // NEW: Use DecorationImage for the background
+                image: const DecorationImage(
+                  image: AssetImage('assets/appbarimg.png'),
+                  fit: BoxFit.cover, // Ensures the image covers the card area
+                  // You might want to adjust colorFilter for better text readability
+                  // colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.4), BlendMode.darken),
+                ),
+              ),
+              child: Card(
+                color: Colors.transparent, // Keep transparent to show Container's image
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            "Today's Profit",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white, // Keep text white for contrast
+                            ),
+                          ),
+                          // Place the refresh button next to the trending icon
+                          Row( // Wrap icon and button in another Row for alignment
+                            children: [
+                              IconButton( // NEW: Refresh button
+                                icon: const Icon(Icons.refresh, color: Colors.white),
+                                onPressed: () {
+                                  // Call loadProfitReport with today's date
+                                  profitController.loadProfitReport(
+                                    startDate: startDate, // Use the calculated startDate
+                                    endDate: endDate,     // Use the calculated endDate
+                                  );
+                                },
+                                tooltip: "Refresh Today's Profit",
+                              ),
+                              Icon(Icons.trending_up, color: Colors.white.withOpacity(0.8), size: 30),
+                            ],
+                          ),
+                        ],
+                      ),
+
+                      Obx(() {
+                        if (profitController.isLoading.value) {
+                          return const LinearProgressIndicator(
+                            color: Colors.white70,
+                            backgroundColor: Colors.white30,
+                          );
+                        }
+                        return Text(
+                          '₹ ${profitController.totalProfit.value.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        );
+                      }),
+
+                      Text(
+                        'As of ${DateFormat('dd-MM-yyyy').format(DateTime.now())}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white.withOpacity(0.8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // grid dashboard (adjusted top padding)
           Padding(
-            padding: const EdgeInsets.only(top: 300),
+            padding: const EdgeInsets.only(top: 320),
             child: GridView.count(
               padding: const EdgeInsets.all(12),
               crossAxisCount: 3,
@@ -201,7 +308,7 @@ class HomeScreen extends StatelessWidget {
               children: dashTiles.map((t) {
                 return _buildGridItem(
                   t.label,
-                  dashIcon(t.label),             // public helper
+                  dashIcon(t.label),
                       () => t.route.isNotEmpty ? navigateTo(t.route) : {},
                   Colors.green,
                 );

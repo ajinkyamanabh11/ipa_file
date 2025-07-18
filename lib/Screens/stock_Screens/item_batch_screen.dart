@@ -1,0 +1,234 @@
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import '../../controllers/item_type_controller.dart';
+import '../../widget/custom_app_bar.dart';
+
+class ItemBatchScreen extends StatelessWidget {
+  final String itemname;
+  final String itemCode;
+  final ItemTypeController controller = Get.find();
+
+  ItemBatchScreen({super.key, required this.itemCode, required this.itemname});
+
+  String _formatDateShort(dynamic v) {
+    if (v == null || v.toString().isEmpty) return '-';
+    try {
+      final d = DateTime.parse(v.toString().split(' ').first);
+      const mon = [
+        '',
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec'
+      ];
+      return '${d.day.toString().padLeft(2, '0')}/${mon[d.month]}/${d.year}';
+    } catch (_) {
+      return v.toString();
+    }
+  }
+
+  // Expiry highlight color logic
+  Color _getExpiryColor(String? expiryDate) {
+    if (expiryDate == null || expiryDate.isEmpty) return Colors.green;
+    try {
+      final expiry = DateTime.parse(expiryDate.split(' ').first);
+      final now = DateTime.now();
+
+      if (expiry.isBefore(now)) {
+        return Colors.red; // expired
+      } else if (expiry.difference(now).inDays <= 30) {
+        return Colors.orange; // expiring soon
+      } else {
+        return Colors.green; // good
+      }
+    } catch (_) {
+      return Colors.green;
+    }
+  }
+
+  Widget _infoPair({
+    required String leftLabel,
+    required String leftValue,
+    required String rightLabel,
+    required String rightValue,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: const TextStyle(color: Colors.black),
+                children: [
+                  TextSpan(
+                    text: leftLabel,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  TextSpan(text: ' $leftValue'),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: const TextStyle(color: Colors.black),
+                children: [
+                  TextSpan(
+                    text: rightLabel,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  TextSpan(text: ' $rightValue'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final RxString sortBy = 'BatchNo'.obs;
+
+    return Scaffold(
+      appBar: CustomAppBar(
+        title: Text('Batches for ItemCode $itemCode'),
+
+      ),
+      body: Obx(() {
+        final batches = controller.itemDetailsByCode[itemCode] ?? [];
+
+        if (batches.isEmpty) {
+          return const Center(child: Text('No batches found.'));
+        }
+
+        return ListView.builder(
+          itemCount: batches.length,
+          itemBuilder: (_, index) {
+            final d = batches[index];
+            final expiryColor =
+            _getExpiryColor(d['ExpiryDate']?.toString() ?? '');
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: 2,
+                      offset: const Offset(0, 4),
+                      color: Colors.black.withOpacity(.12),
+                    ),
+                  ],
+                ),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // colored accent bar based on expiry
+                      Container(
+                        width: 8,
+                        decoration: BoxDecoration(
+                          color: expiryColor,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(16),
+                            bottomLeft: Radius.circular(16),
+                          ),
+                        ),
+                      ),
+                      // content
+                      Expanded(
+                        child: Padding(
+                          padding:
+                          const EdgeInsets.fromLTRB(12, 12, 16, 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      itemname,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 16),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Chip(
+                                    backgroundColor:
+                                    Colors.green.shade100,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 4),
+                                    label: Text(
+                                      'MRP ₹${d['MRP']?.toString() ?? '-'}',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              _infoPair(
+                                leftLabel: 'Stock:',
+                                leftValue:
+                                d['Currentstock']?.toString() ?? '-',
+                                rightLabel: 'Batch No:',
+                                rightValue:
+                                d['BatchNo']?.toString() ?? '-',
+                              ),
+                              _infoPair(
+                                leftLabel: 'Cash Rate:',
+                                leftValue:
+                                '₹${d['CashTradindPrice']?.toString() ?? '-'}',
+                                rightLabel: 'Expiry:',
+                                rightValue: _formatDateShort(
+                                    d['ExpiryDate']?.toString()),
+                              ),
+                              _infoPair(
+                                leftLabel: 'Credit Rate:',
+                                leftValue:
+                                '₹${d['CreditTradindPrice']?.toString() ?? '-'}',
+                                rightLabel: 'Pur. Rate:',
+                                rightValue:
+                                '₹${d['PurchasePrice']?.toString() ?? '-'}',
+                              ),
+                              _infoPair(
+                                leftLabel: 'Pkg:',
+                                leftValue:
+                                d['txt_pkg']?.toString() ?? '-',
+                                rightLabel: 'HSN:',
+                                rightValue:
+                                d['HSNCode']?.toString() ?? '-',
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      }),
+    );
+  }
+}
