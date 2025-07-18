@@ -3,7 +3,8 @@ import 'dart:math';
 import 'package:flutter/cupertino.dart';
 
 class DotsWaveLoadingText extends StatefulWidget {
-  const DotsWaveLoadingText({super.key});
+  final Color? color;
+  const DotsWaveLoadingText({super.key, this.color,});
 
   @override
   State<DotsWaveLoadingText> createState() => _DotsWaveLoadingTextState();

@@ -9,6 +9,9 @@ import '../util/dashboard_tiles.dart.dart';
 import '../controllers/google_signin_controller.dart';
 import '../routes/routes.dart';                     // ⬅ route constants
 
+// Import the ThemeController
+import '../controllers/theme_controller.dart'; // <--- ADD THIS LINE
+
 // other feature screens that still open by widget (if any) can stay imported
 import 'stock_Screens/item_type_screen.dart';      // we’ll navigate by route now
 import 'stock_Screens/item_list_screen.dart';
@@ -31,36 +34,47 @@ class HomeScreen extends StatelessWidget {
   /// Navigate via **named route** so bindings fire
   void navigateTo(String route) => Get.toNamed(route);
 
+  // Updated to use theme colors for consistency
   Widget _buildGridItem(
       String label,
       IconData icon,
       VoidCallback onTap,
-      Color color,
+      BuildContext context, // Pass BuildContext to access theme
       ) {
     return GestureDetector(
       onTap: onTap,
       child: Card(
-        color: Colors.green.shade50,
+        // Use theme's card color
+        color: Theme.of(context).cardColor,
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircleAvatar(backgroundColor: color, child: Icon(icon, color: Colors.white)),
+            CircleAvatar(
+              // Use theme's primary color for the avatar background
+              backgroundColor: Theme.of(context).primaryColor,
+              child: Icon(icon, color: Colors.white), // Icon color typically white on primary
+            ),
             const SizedBox(height: 10),
             Text(label,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.bold)),
+                // Use theme's text style for consistency
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDrawerItem(IconData icon, String title, VoidCallback onTap) {
+  // Updated to use theme colors and text styles for consistency
+  Widget _buildDrawerItem(IconData icon, String title, VoidCallback onTap, BuildContext context) {
     return ListTile(
-      leading: Icon(icon, color: Colors.green.shade800),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+      // Use theme's icon color
+      leading: Icon(icon, color: Theme.of(context).iconTheme.color),
+      title: Text(title,
+          // Use theme's text style
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
       onTap: () {
         Get.back();
         onTap();
@@ -72,6 +86,7 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = Get.find<GoogleSignInController>();
     final profitController = Get.find<ProfitReportController>();
+    final themeController = Get.find<ThemeController>(); // <--- GET THE THEME CONTROLLER
 
     // Calculate today's date once in build for use
     final today = DateTime.now();
@@ -86,6 +101,7 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       key: _scaffoldKey,
       drawer: Drawer(
+        // The drawer's background will automatically adapt based on scaffoldBackgroundColor
         child: SingleChildScrollView(
           child: Column(
             children: [
@@ -99,7 +115,8 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ),
                   child: Row(
-                    children: const [
+                    children: [
+                      // Using fixed colors for elements on a background image for contrast
                       CircleAvatar(radius: 30, backgroundImage: AssetImage('assets/applogo.png')),
                       SizedBox(width: 16),
                       Text("Kisan Krushi Menu",
@@ -108,27 +125,47 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              // Map existing drawer tiles, passing context
               ...drawerTiles.map((t) {
                 if (t.label == 'Dashboard') {
                   return _buildDrawerItem(
-                      dashIcon(t.label), t.label, () {});
+                      dashIcon(t.label), t.label, () {}, context); // Pass context
                 }
                 if (t.label == 'Profile') {
                   return _buildDrawerItem(
-                      dashIcon(t.label), t.label, () {});
+                      dashIcon(t.label), t.label, () {}, context); // Pass context
                 }
                 return _buildDrawerItem(
                   dashIcon(t.label),
                   t.label,
                       () => t.route.isNotEmpty ? navigateTo(t.route) : {},
+                  context, // Pass context
                 );
               }).toList(),
 
-              const Divider(),
+              // <--- ADD THE THEME TOGGLE HERE ---
+              Obx(() => SwitchListTile(
+                title: Text(
+                  themeController.isDarkMode.value ? "Dark Mode" : "Light Mode",
+                  style: Theme.of(context).textTheme.bodyMedium, // Use theme text style
+                ),
+                secondary: Icon(
+                  themeController.isDarkMode.value ? Icons.dark_mode : Icons.light_mode,
+                  color: Theme.of(context).iconTheme.color, // Use theme icon color
+                ),
+                value: themeController.isDarkMode.value,
+                onChanged: (bool value) {
+                  themeController.toggleTheme(); // Call the toggle method
+                },
+                activeColor: Theme.of(context).primaryColor, // Use theme's primary color
+              )),
+              // --- END THEME TOGGLE ---
+
+              const Divider(), // Divider color will adapt via theme.dividerColor
               _buildDrawerItem(Icons.logout, "Logout", () async {
                 await controller.logout();
                 Get.offAllNamed(Routes.login);
-              }),
+              }, context), // Pass context
             ],
           ),
         ),
@@ -165,7 +202,7 @@ class HomeScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.menu, color: Colors.white),
+                      icon: const Icon(Icons.menu, color: Colors.white), // Keep white for contrast on image
                       onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                     ),
                     const Spacer(),
@@ -181,7 +218,7 @@ class HomeScreen extends StatelessWidget {
                               Text(
                                 company,
                                 style: const TextStyle(
-                                  color: Colors.white,
+                                  color: Colors.white, // Keep white for contrast on image
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -190,7 +227,7 @@ class HomeScreen extends StatelessWidget {
                               ),
                               const Text(
                                 "By Manabh",
-                                style: TextStyle(color: Colors.white, fontSize: 14),
+                                style: TextStyle(color: Colors.white, fontSize: 14), // Keep white for contrast on image
                                 textAlign: TextAlign.end,
                               ),
                             ],
@@ -213,7 +250,8 @@ class HomeScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(15),
                 boxShadow: [
                   BoxShadow(
-                    color:Colors.black54,
+                    // Box shadow color can be theme-dependent, but black54 is often good for both.
+                    color: Colors.black54,
                     spreadRadius: 1,
                     blurRadius: 8,
                     offset: const Offset(0, 4),
@@ -244,14 +282,14 @@ class HomeScreen extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white, // Keep text white for contrast
+                              color: Colors.white, // Keep text white for contrast on image
                             ),
                           ),
                           // Place the refresh button next to the trending icon
                           Row( // Wrap icon and button in another Row for alignment
                             children: [
                               IconButton( // NEW: Refresh button
-                                icon: const Icon(Icons.refresh, color: Colors.white),
+                                icon: const Icon(Icons.refresh, color: Colors.white), // Keep white for contrast
                                 onPressed: () {
                                   // Call loadProfitReport with today's date
                                   profitController.loadProfitReport(
@@ -261,7 +299,7 @@ class HomeScreen extends StatelessWidget {
                                 },
                                 tooltip: "Refresh Today's Profit",
                               ),
-                              Icon(Icons.trending_up, color: Colors.white.withOpacity(0.8), size: 30),
+                              Icon(Icons.trending_up, color: Colors.white.withOpacity(0.8), size: 30), // Keep white for contrast
                             ],
                           ),
                         ],
@@ -269,9 +307,9 @@ class HomeScreen extends StatelessWidget {
 
                       Obx(() {
                         if (profitController.isLoading.value) {
-                          return const LinearProgressIndicator(
-                            color: Colors.white70,
-                            backgroundColor: Colors.white30,
+                          return LinearProgressIndicator(
+                            color: Theme.of(context).colorScheme.onPrimary, // Use theme color
+                            backgroundColor: Theme.of(context).primaryColor, // Use theme color
                           );
                         }
                         return Text(
@@ -279,7 +317,7 @@ class HomeScreen extends StatelessWidget {
                           style: const TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            color: Colors.white, // Keep white for contrast on image
                           ),
                         );
                       }),
@@ -288,7 +326,7 @@ class HomeScreen extends StatelessWidget {
                         'As of ${DateFormat('dd-MM-yyyy').format(DateTime.now())}',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.white.withOpacity(0.8),
+                          color: Colors.white.withOpacity(0.8), // Keep white for contrast on image
                         ),
                       ),
                     ],
@@ -310,7 +348,7 @@ class HomeScreen extends StatelessWidget {
                   t.label,
                   dashIcon(t.label),
                       () => t.route.isNotEmpty ? navigateTo(t.route) : {},
-                  Colors.green,
+                  context, // <--- PASS CONTEXT HERE
                 );
               }).toList(),
             ),
