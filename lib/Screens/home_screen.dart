@@ -32,7 +32,7 @@ class HomeScreen extends StatelessWidget {
   HomeScreen({super.key});
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-
+  final GoogleSignInController googleSignInController = Get.find<GoogleSignInController>();
   /// Navigate via **named route** so bindings fire
   void navigateTo(String route) => Get.toNamed(route);
 
@@ -117,13 +117,31 @@ class HomeScreen extends StatelessWidget {
                       fit: BoxFit.cover,
                     ),
                   ),
-                  child: const Row( // Added const here
+                  child:  Row( // Added const here
                     children: [
                       // Using fixed colors for elements on a background image for contrast
                       CircleAvatar(radius: 30, backgroundImage: AssetImage('assets/applogo.png')),
                       SizedBox(width: 16),
-                      Text("Kisan Krushi Menu",
-                          style: TextStyle(fontSize: 20, color: Colors.white)),
+                      Obx(() {
+                        // CORRECTED: Use 'user.value' instead of 'currentUser.value'
+                        final user = googleSignInController.user.value;
+                        String displayText = "Kisan Krushi Menu"; // Default text if no user or data
+
+                        if (user != null) {
+                          // Prefer displayName, fall back to email if displayName is null
+                          final userName = user.displayName ?? user.email;
+                          if (userName != null && userName.isNotEmpty) {
+                            displayText = "Hello $userName";
+                          } else {
+                            displayText = "Hello User"; // Generic fallback if display name and email are empty
+                          }
+                        }
+
+                        return Text(
+                          displayText,
+                          style: TextStyle(fontSize: 20, color: Colors.white),
+                        );
+                      }),
                     ],
                   ),
                 ),

@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -20,18 +19,24 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.demo"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
+
     signingConfigs {
-        getByName("debug") {
+        // Your existing debug signing config
+        create("debugConfig") { // Renamed to avoid conflict with default 'debug' name
             keyAlias = "key0"
+            keyPassword = "ajinkya"
+            storeFile = file("upload-keystore.jks")
+            storePassword = "ajinkya"
+        }
+        // Explicit release signing config (can be the same keystore for testing)
+        create("releaseConfig") {
+            keyAlias = "key0" // Use the same alias as debug for simplicity in testing
             keyPassword = "ajinkya"
             storeFile = file("upload-keystore.jks")
             storePassword = "ajinkya"
@@ -40,7 +45,15 @@ android {
 
     buildTypes {
         getByName("debug") {
-            signingConfig = signingConfigs.getByName("debug")
+            // Apply your custom debug signing config
+            signingConfig = signingConfigs.getByName("debugConfig")
+        }
+        getByName("release") {
+            // Apply your release signing config
+            signingConfig = signingConfigs.getByName("releaseConfig")
+            // Other release specific settings can go here (e.g., minify, shrinkResources)
+            // minifyEnabled true
+            // shrinkResources true
         }
     }
 }

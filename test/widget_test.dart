@@ -5,26 +5,31 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
-import 'package:flutter/material.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:demo/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
+  testWidgets('App starts and navigates correctly (smoke test)', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp(isLoggedIn: null,));
+    // Choose true or false based on what initial state you want to test.
+    // For a general smoke test, testing the logged-out state (false) is often a good start.
+    await tester.pumpWidget(const MyApp(isLoggedIn: false)); // FIX: Changed null to false
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // The original test was for a counter app. Your app is different.
+    // You'll need to update these expectations to match your actual app's UI.
+    // For example, if isLoggedIn: false, you might expect to find text related to the login screen.
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    // Example: If the login screen has a "Login" button:
+    expect(find.text('Login'), findsOneWidget);
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // If you were testing the home screen (isLoggedIn: true), you might expect a specific element:
+    // await tester.pumpWidget(const MyApp(isLoggedIn: true));
+    // expect(find.text("Today's Profit"), findsOneWidget); // Example from home_screen.dart
+
+    // Note: The original test's "expect(find.text('0'), findsOneWidget);"
+    // and "expect(find.text('1'), findsNothing);" are from a default counter app template.
+    // You should replace these with assertions relevant to your Kisan Krushi app's UI.
   });
 }

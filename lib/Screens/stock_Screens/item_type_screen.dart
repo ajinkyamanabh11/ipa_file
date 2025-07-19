@@ -20,6 +20,15 @@ class _ItemTypeScreenState extends State<ItemTypeScreen> with RouteAware {
   final FocusNode _focusNode = FocusNode();
 
   @override
+  void initState() {
+    super.initState();
+    // 💡 CRITICAL CHANGE: Start fetching item types immediately
+    // This ensures isLoading is set to true before the first build cycle completes,
+    // preventing the "No item types found." flicker.
+    controller.fetchItemTypes();
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Ensure ModalRoute.of(context) is not null before subscribing
@@ -39,8 +48,10 @@ class _ItemTypeScreenState extends State<ItemTypeScreen> with RouteAware {
 
   @override
   void didPopNext() {
+    // When navigating back to this screen from another,
+    // clear search, reset the filter, and unfocus the search field.
     searchController.clear();
-    controller.search('');
+    controller.search(''); // Reset filtered list to all types
     _focusNode.unfocus();
     super.didPopNext();
   }
@@ -54,16 +65,14 @@ class _ItemTypeScreenState extends State<ItemTypeScreen> with RouteAware {
     final Color iconColor = Theme.of(context).iconTheme.color ?? onSurfaceColor; // Default icon color
 
     return Scaffold(
-      // CustomAppBar should be theme-aware internally; its title text will follow AppBarTheme from main.dart
       appBar: const CustomAppBar(
           title: Text('🧾 Item Types'), showBackButton: true, centerTitle: true),
       body: Column(
         children: [
-          // 🔹 search bar is NOT rebuilt every time
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            // RoundedSearchField needs to be theme-aware internally for its colors
             child: RoundedSearchField(
+              text: 'Search by Item type...',
               controller: searchController,
               focusNode: _focusNode,
               onChanged: controller.search,
@@ -75,19 +84,16 @@ class _ItemTypeScreenState extends State<ItemTypeScreen> with RouteAware {
             ),
           ),
 
-          // 🔹 only this Expanded is reactive
           Expanded(
             child: Obx(() {
-              // show a full‑screen spinner ONLY when we have nothing yet
-              if (controller.isLoading.value &&
-                  controller.allItemTypes.isEmpty) {
+              // Show loading spinner if controller is currently loading
+              if (controller.isLoading.value) {
                 return Center(
-                  // Pass the theme-aware color to DotsWaveLoadingText
                   child: DotsWaveLoadingText(color: onSurfaceColor),
                 );
               }
 
-              // show error overlay but keep the rest intact
+              // Show error overlay if there's an error
               if (controller.error.value != null) {
                 return Center(
                   child: Column(
@@ -96,36 +102,34 @@ class _ItemTypeScreenState extends State<ItemTypeScreen> with RouteAware {
                       Text(
                         '❌ ${controller.error.value}',
                         textAlign: TextAlign.center,
-                        // Error text color (red is usually fine for errors in both themes)
                         style: const TextStyle(color: Colors.red, fontSize: 16),
                       ),
                       const SizedBox(height: 20),
                       ElevatedButton.icon(
-                        onPressed: () =>
-                            controller.fetchItemTypes(silent: false),
+                        onPressed: () => controller.fetchItemTypes(silent: false),
                         icon: const Icon(Icons.refresh),
                         label: const Text('Retry'),
-                        // ElevatedButton colors will adapt based on theme
                       ),
                     ],
                   ),
                 );
               }
 
-              // main list with pull‑to‑refresh
-              return AppRefreshIndicator(
-                // Use theme's primary color for the refresh indicator
-                color: primaryColor,
-                onRefresh: () => controller.fetchItemTypes(silent: true),
-                child: controller.filteredItemTypes.isEmpty
-                    ? Center(
+              // Only show "No item types found." if not loading AND the filtered list is empty
+              if (controller.filteredItemTypes.isEmpty) {
+                return Center(
                   child: Text(
-                    'No item types found.',
-                    // Use theme's onSurface color for visibility
+                    'No item types found.Or yet fetching data.. ',
                     style: TextStyle(color: onSurfaceColor),
                   ),
-                )
-                    : ListView.builder(
+                );
+              }
+
+              // Main list with pull-to-refresh
+              return AppRefreshIndicator(
+                color: primaryColor,
+                onRefresh: () => controller.fetchItemTypes(silent: true),
+                child: ListView.builder(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: controller.filteredItemTypes.length,
                   itemBuilder: (_, index) {
@@ -135,18 +139,15 @@ class _ItemTypeScreenState extends State<ItemTypeScreen> with RouteAware {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
                       child: Card(
-                        // Use theme's card color
                         color: cardColor,
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                         elevation: 1,
                         child: ListTile(
-                          // Text color will adapt automatically from theme.textTheme
                           title: Text(
                             '$type ($count)',
-                            style: Theme.of(context).textTheme.titleMedium, // Or bodyLarge
+                            style: Theme.of(context).textTheme.titleMedium,
                           ),
-                          // Use theme's icon color for the trailing icon
                           trailing: Icon(
                             Icons.arrow_forward_ios,
                             size: 16,

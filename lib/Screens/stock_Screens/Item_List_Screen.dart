@@ -121,6 +121,7 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             // RoundedSearchField should be theme-aware internally
             child: RoundedSearchField(
+              text:'Search by Item Name...',
               controller: _searchController,
               focusNode: _focusNode,
               onChanged: (_) => _onSearchChanged(),

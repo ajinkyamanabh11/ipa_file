@@ -1,3 +1,5 @@
+// lib/screens/profit_screen.dart
+
 import 'package:demo/widget/rounded_search_field.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -25,20 +27,16 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
   @override
   void initState() {
     super.initState();
-    // searchController = TextEditingController();
-     fromDate = DateUtils.dateOnly(DateTime.now());
-     toDate = DateUtils.dateOnly(DateTime.now());
-    // WidgetsBinding.instance.addPostFrameCallback((_) {
-    //
-      prc.loadProfitReport(startDate: fromDate, endDate: toDate);
-    // });
+    fromDate = DateUtils.dateOnly(DateTime.now());
+    toDate = DateUtils.dateOnly(DateTime.now());
+    // 🟢 UNCOMMENTED: Trigger the initial load when the screen is initialized.
+    prc.loadProfitReport(startDate: fromDate, endDate: toDate);
   }
 
   @override
   void dispose() {
     searchController.dispose();
     Get.delete<ProfitReportController>();
-    // Assuming you have this method in your controller to clear totals/data
     super.dispose();
   }
 
@@ -69,7 +67,8 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
                 ));
               }
 
-              final filteredRows = _getFilteredRows();
+              // 🟢 MODIFIED: Use the reactive filteredRows from the controller
+              final filteredRows = prc.filteredRows;
 
               if (filteredRows.isEmpty) {
                 final range = fromDate == toDate
@@ -86,12 +85,10 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   child: Column(
                     children: [
-                      // Pass context to the table builder
                       _buildTableWithTotals(filteredRows, context),
                       const SizedBox(height: 20),
-                      // Pass context to the chart builder
                       _buildProfitPieChart(filteredRows, context),
-                      const SizedBox(height: 20), // Spacing after chart
+                      const SizedBox(height: 20),
                     ],
                   ),
                 ),
@@ -141,19 +138,17 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
             firstDate: DateTime(2000),
             lastDate: DateTime(2100),
             builder: (context, child) {
-              // Ensure date picker itself respects theme for text/background
               return Theme(
                 data: Theme.of(context).copyWith(
-                  // Customize date picker theme if needed, e.g., for primary color
                   colorScheme: Theme.of(context).colorScheme.copyWith(
-                    primary: Theme.of(context).primaryColor, // Highlight color
-                    onPrimary: Theme.of(context).colorScheme.onPrimary, // Text on highlight
-                    surface: Theme.of(context).colorScheme.surface, // Background for calendar
-                    onSurface: Theme.of(context).colorScheme.onSurface, // Text on background
+                    primary: Theme.of(context).primaryColor,
+                    onPrimary: Theme.of(context).colorScheme.onPrimary,
+                    surface: Theme.of(context).colorScheme.surface,
+                    onSurface: Theme.of(context).colorScheme.onSurface,
                   ),
                   textButtonTheme: TextButtonThemeData(
                     style: TextButton.styleFrom(
-                      foregroundColor: Theme.of(context).primaryColor, // OK/Cancel button text
+                      foregroundColor: Theme.of(context).primaryColor,
                     ),
                   ),
                 ),
@@ -173,25 +168,25 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
       text: "Search By Item Name or Bill no..",
       onClear: () {
         searchController.clear();
-        prc.searchQuery.value = ''; // Update the RxString
+        prc.searchQuery.value = ''; // Update the RxString in controller
       },
       onChanged: (value) {
-        prc.searchQuery.value = value; // Update the RxString, Obx will react
-        // No need for setState(() {}); here
+        prc.searchQuery.value = value; // Update the RxString in controller
+        // No need for setState(() {}); here as Obx observes prc.filteredRows which uses searchQuery
       },
     );
   }
 
-  List<Map<String, dynamic>> _getFilteredRows() {
-    final search = searchController.text.toLowerCase();
-    return prc.batchProfits.where((row) {
-      final item = (row['itemName'] ?? '').toString().toLowerCase();
-      final bill = (row['billno'] ?? '').toString().toLowerCase();
-      return item.contains(search) || bill.contains(search);
-    }).toList();
-  }
+  // 🔴 REMOVED: This method is now redundant as prc.filteredRows handles filtering
+  // List<Map<String, dynamic>> _getFilteredRows() {
+  //   final search = searchController.text.toLowerCase();
+  //   return prc.batchProfits.where((row) {
+  //     final item = (row['itemName'] ?? '').toString().toLowerCase();
+  //     final bill = (row['billno'] ?? '').toString().toLowerCase();
+  //     return item.contains(search) || bill.contains(search);
+  //   }).toList();
+  // }
 
-  // Modified to accept BuildContext
   Widget _buildTableWithTotals(List<Map<String, dynamic>> rows, BuildContext context) {
     final sortedRows = List<Map<String, dynamic>>.from(rows)
       ..sort((a, b) => a['billno'].toString().compareTo(b['billno'].toString()));
@@ -201,14 +196,12 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: PaginatedDataTable(
-        // Use theme-aware color for heading row
         headingRowColor: MaterialStateProperty.all(Theme.of(context).colorScheme.surfaceVariant),
         columnSpacing: 24,
         rowsPerPage: rowsPer,
         availableRowsPerPage: sortedRows.length < 10 ? [rowsPer] : const [10],
         showFirstLastButtons: true,
         columns: [
-          // Ensure column labels also respect text theme
           DataColumn(label: Text('Sr.', style: Theme.of(context).textTheme.titleSmall)),
           DataColumn(label: Text('Item', style: Theme.of(context).textTheme.titleSmall)),
           DataColumn(label: Text('Bill No', style: Theme.of(context).textTheme.titleSmall)),
@@ -220,13 +213,11 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
           DataColumn(label: Text('Purchase', style: Theme.of(context).textTheme.titleSmall)),
           DataColumn(label: Text('Profit', style: Theme.of(context).textTheme.titleSmall)),
         ],
-        // Pass context to _ProfitSource
         source: _ProfitSource(sortedRows, context),
       ),
     );
   }
 
-  // NEW: Build the Profit Pie Chart (Modified to accept BuildContext)
   Widget _buildProfitPieChart(List<Map<String, dynamic>> rows, BuildContext context) {
     final Map<String, double> itemProfits = {};
     double totalPositiveProfit = 0;
@@ -246,7 +237,7 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Text(
           'No positive profit data to display pie chart.',
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurface), // Theme-aware text color
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
       );
     }
@@ -257,9 +248,6 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
     List<PieChartSectionData> sections = [];
     double otherProfit = 0;
     final int maxSlices = 5;
-    // These colors are for the slices, and should generally be distinct.
-    // They don't strictly need to be theme-aware in the same way as text/backgrounds,
-    // as they represent distinct categories.
     final List<Color> pieColors = [
       Colors.green.shade600,
       Colors.blue.shade600,
@@ -282,11 +270,10 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
             value: entry.value,
             title: '${(entry.value / totalPositiveProfit * 100).toStringAsFixed(1)}%',
             radius: 80,
-            // Title text on slice - white usually contrasts well with darker slice colors
             titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
             badgeWidget: sortedItemProfits.length == 1
-                ? null // If only one slice, do not show badge
-                : _buildBadge(entry.key, color, context), // Pass context
+                ? null
+                : _buildBadge(entry.key, color, context),
             badgePositionPercentageOffset: 1.05,
           ),
         );
@@ -298,12 +285,12 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
     if (otherProfit > 0) {
       sections.add(
         PieChartSectionData(
-          color: Colors.grey.shade400, // Fixed color for 'Other'
+          color: Colors.grey.shade400,
           value: otherProfit,
           title: '${(otherProfit / totalPositiveProfit * 100).toStringAsFixed(1)}%',
           radius: 80,
           titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-          badgeWidget: _buildBadge('Other', Colors.grey.shade400, context), // Pass context
+          badgeWidget: _buildBadge('Other', Colors.grey.shade400, context),
           badgePositionPercentageOffset: 1.05,
         ),
       );
@@ -313,7 +300,6 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
       elevation: 4,
       margin: const EdgeInsets.symmetric(horizontal: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      // Card background color adapts via theme.cardColor set in AppThemes
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -323,12 +309,12 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Theme.of(context).textTheme.headlineSmall?.color, // Use theme text color
+                color: Theme.of(context).textTheme.headlineSmall?.color,
               ),
             ),
             const SizedBox(height: 16),
             SizedBox(
-              height: 250, // Adjust height as needed
+              height: 250,
               child: PieChart(
                 PieChartData(
                   pieTouchData: PieTouchData(touchCallback: (FlTouchEvent event, pieTouchResponse) {
@@ -336,31 +322,27 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
                       if (!event.isInterestedForInteractions ||
                           pieTouchResponse == null ||
                           pieTouchResponse.touchedSection == null) {
-                        // Reset touched index if no interaction
                       } else {
-                        // Handle touch if needed
                       }
                     });
                   }),
                   borderData: FlBorderData(show: false),
-                  sectionsSpace: 2, // Space between sections
-                  centerSpaceRadius: 40, // Size of the hole in the middle
+                  sectionsSpace: 2,
+                  centerSpaceRadius: 40,
                   sections: sections,
                 ),
               ),
             ),
             const SizedBox(height: 20),
-            // Legend for the pie chart
             Wrap(
               alignment: WrapAlignment.center,
-              spacing: 8.0, // horizontal spacing
-              runSpacing: 4.0, // vertical spacing
+              spacing: 8.0,
+              runSpacing: 4.0,
               children: sections.map((section) {
-                // Safely extract title from badgeWidget, handling null if badgeWidget is null
                 final String title = section.badgeWidget is Column && (section.badgeWidget as Column).children.first is Text
                     ? ((section.badgeWidget as Column).children.first as Text).data ?? ''
-                    : (section.title ?? '').replaceAll('%', ''); // Use section.title if badge is null
-                return _buildLegendItem(title.replaceAll('%', ''), section.color!, context); // Pass context
+                    : (section.title ?? '').replaceAll('%', '');
+                return _buildLegendItem(title.replaceAll('%', ''), section.color!, context);
               }).toList(),
             ),
           ],
@@ -369,10 +351,9 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
     );
   }
 
-  // Helper to build the badge for PieChartSectionData (Modified to accept BuildContext)
   Widget _buildBadge(String text, Color color, BuildContext context) {
     if (text.trim().isEmpty) {
-      return const SizedBox.shrink(); // Return an empty widget if no text
+      return const SizedBox.shrink();
     }
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -380,10 +361,9 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
         Text(
           text,
           style: TextStyle(
-            // Use theme's onSurface color for badge text to ensure visibility on card background
             color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.bold,
-            fontSize: 10, // Smaller font for badge text
+            fontSize: 10,
           ),
           textAlign: TextAlign.center,
           maxLines: 2,
@@ -393,7 +373,6 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
     );
   }
 
-  // Helper to build legend items (Modified to accept BuildContext)
   Widget _buildLegendItem(String text, Color color, BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -410,7 +389,7 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
         Flexible(
           child: Text(
             text,
-            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface), // Use theme's onSurface color for legend text
+            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface),
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
           ),
@@ -419,11 +398,8 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
     );
   }
 
-
-  // Modified to accept BuildContext
   Widget _buildTotalsCard(BuildContext context) {
     return Container(
-      // Use theme's card color for the totals card background
       color: Theme.of(context).cardColor,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
@@ -438,8 +414,6 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
   }
 
   Widget _totalTile(String label, double amount, Color color) {
-    // Colors for specific totals (blue, orange, green) are kept as they are semantic.
-    // Their visibility will depend on the overall background provided by _buildTotalsCard.
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -452,24 +426,22 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
 }
 
 class _ProfitSource extends DataTableSource {
-  _ProfitSource(this.data, this.context); // Modified constructor to accept context
+  _ProfitSource(this.data, this.context);
 
   final List<Map<String, dynamic>> data;
-  final BuildContext context; // Store context
+  final BuildContext context;
 
   @override
   DataRow? getRow(int index) {
     if (index >= data.length) return null;
     final row = data[index];
 
-    // Get theme colors to make rows visible in dark mode
     final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
     final Color surfaceColor = Theme.of(context).colorScheme.surface;
     final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
 
     return DataRow.byIndex(
       index: index,
-      // Use theme-aware colors for alternating row backgrounds
       color: MaterialStateProperty.all(index.isEven ? surfaceColor : surfaceVariantColor),
       cells: [
         DataCell(Text('${index + 1}', style: TextStyle(color: onSurfaceColor))),
@@ -485,8 +457,6 @@ class _ProfitSource extends DataTableSource {
           Text(
             '₹${(row['profit'] ?? 0).toStringAsFixed(2)}',
             style: TextStyle(
-              // These colors are semantic (red for loss, green for profit)
-              // and are assumed to contrast well enough with the adaptive row backgrounds.
               color: (row['profit'] ?? 0) < 0 ? Colors.red : Colors.green,
               fontWeight: FontWeight.bold,
             ),
