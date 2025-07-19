@@ -1,4 +1,3 @@
-// lib/screens/debtors_screen.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -39,18 +38,28 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
   // ──────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    // Get theme colors and text styles once
+    final Color primaryColor = Theme.of(context).primaryColor;
+    final Color onPrimaryColor = Theme.of(context).colorScheme.onPrimary;
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color cardColor = Theme.of(context).cardColor;
+    final Color shadowColor = Theme.of(context).shadowColor;
+    final Color errorColor = Theme.of(context).colorScheme.error;
+    final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
+
+
     return Scaffold(
-      appBar: CustomAppBar(title: const Text('Debtors')),
+      appBar: CustomAppBar(title: Text('Debtors', style: Theme.of(context).appBarTheme.titleTextStyle)),
       floatingActionButton: Obx(() => showFab.value
           ? FloatingActionButton(
         heroTag: 'toTopBtn',
-        backgroundColor: Colors.green,
+        backgroundColor: primaryColor, // Use theme primary color
         onPressed: () => listCtrl.animateTo(
           0,
           duration: const Duration(milliseconds: 400),
           curve: Curves.easeOut,
         ),
-        child: const Icon(Icons.arrow_upward, color: Colors.white),
+        child: Icon(Icons.arrow_upward, color: onPrimaryColor), // Use theme onPrimary color
       )
           : const SizedBox.shrink()),
       body: Column(
@@ -62,23 +71,27 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
               controller: searchCtrl,
               decoration: InputDecoration(
                 hintText: 'Search by name',
-                prefixIcon: const Icon(Icons.search, color: Colors.green),
+                prefixIcon: Icon(Icons.search, color: primaryColor), // Use theme primary color
                 suffixIcon: searchCtrl.text.isEmpty
                     ? null
                     : IconButton(
-                  icon: const Icon(Icons.clear),
+                  icon: Icon(Icons.clear, color: Theme.of(context).iconTheme.color), // Use theme icon color
                   onPressed: () {
                     searchCtrl.clear();
                     searchQ.value = '';
                   },
                 ),
                 filled: true,
-                fillColor: Colors.green.shade50,
+                // Use theme-aware fill color, fallback to surfaceVariant
+                fillColor: Theme.of(context).inputDecorationTheme.fillColor ?? surfaceVariantColor,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(30),
                   borderSide: BorderSide.none,
                 ),
+                hintStyle: TextStyle(color: onSurfaceColor.withOpacity(0.6)), // Hint text color
+                labelStyle: TextStyle(color: onSurfaceColor), // Label text color
               ),
+              style: TextStyle(color: onSurfaceColor), // Input text color
               onChanged: (v) => searchQ.value = v,
             ),
           ),
@@ -90,9 +103,9 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                   () => Wrap(
                 spacing: 8,
                 children: [
-                  _chip('All'),
-                  _chip('Customer'),
-                  _chip('Supplier'),
+                  _chip('All', context), // Pass context
+                  _chip('Customer', context), // Pass context
+                  _chip('Supplier', context), // Pass context
                 ],
               ),
             ),
@@ -103,7 +116,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
             child: Obx(() {
               // 1️⃣ full‑screen loader only on FIRST load
               if (ctrl.isLoading.value && ctrl.debtors.isEmpty) {
-                return const Center(child: DotsWaveLoadingText());
+                return Center(child: DotsWaveLoadingText(color: onSurfaceColor)); // Use theme-aware color
               }
 
               // 2️⃣ show error, but leave search & chips in place
@@ -111,7 +124,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                 return Center(
                   child: Text(
                     '❌  ${ctrl.error.value!}',
-                    style: const TextStyle(color: Colors.red),
+                    style: TextStyle(color: errorColor), // Use theme error color
                   ),
                 );
               }
@@ -136,17 +149,18 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
 
               // 4️⃣ empty‑state placeholder
               if (debtors.isEmpty) {
-                return const Center(child: Text('No debtors found.'));
+                return Center(child: Text('No debtors found.', style: TextStyle(color: onSurfaceColor))); // Use theme-aware color
               }
 
               // 5️⃣ list with pull‑to‑refresh
               return RefreshIndicator(
                 onRefresh: () => ctrl.refreshDebtors(),   // ← single call
+                color: primaryColor, // Use theme primary color for refresh indicator
                 child: ListView.builder(
                   controller: listCtrl,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   itemCount: debtors.length,
-                  itemBuilder: (_, i) => _debtorTile(debtors[i]),
+                  itemBuilder: (_, i) => _debtorTile(debtors[i], context), // Pass context
                 ),
               );
             }),
@@ -157,34 +171,69 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
   }
 
   // ──────────────────── helpers ─────────────────────────────
-  ChoiceChip _chip(String label) => ChoiceChip(
-    label: Text(label),
-    selected: filterType.value == label,
-    selectedColor: Colors.green.shade300,
-    onSelected: (_) => filterType.value = label,
-  );
+  ChoiceChip _chip(String label, BuildContext context) {
+    final bool isSelected = filterType.value == label;
+    final Color primaryColor = Theme.of(context).primaryColor;
+    final Color onPrimaryColor = Theme.of(context).colorScheme.onPrimary;
+    final Color surfaceColor = Theme.of(context).colorScheme.surface;
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
 
-  Widget _badge(String label, dynamic value,
-      {TextAlign align = TextAlign.left}) =>
-      Text.rich(
-        TextSpan(
-          style: const TextStyle(fontSize: 14, color: Colors.black),
-          children: [
-            TextSpan(
-                text: '$label ',
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-            TextSpan(text: value?.toString() ?? '-'),
-          ],
+    return ChoiceChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          color: isSelected ? onPrimaryColor : onSurfaceColor, // Text color for selected/unselected
         ),
-        textAlign: align,
-        softWrap: true,
-      );
+      ),
+      selected: isSelected,
+      // Use theme's primary color for selected, and default surface for unselected
+      selectedColor: primaryColor,
+      backgroundColor: surfaceColor, // Background for unselected chips
+      onSelected: (_) => filterType.value = label,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: isSelected ? primaryColor : onSurfaceColor.withOpacity(0.5), // Border for selected/unselected
+        ),
+      ),
+    );
+  }
+
+  Widget _badge(String label, dynamic value, {TextAlign align = TextAlign.left}) {
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    return Text.rich(
+      TextSpan(
+        style: TextStyle(fontSize: 14, color: onSurfaceColor), // Use theme-aware color
+        children: [
+          TextSpan(
+              text: '$label ',
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+          TextSpan(text: value?.toString() ?? '-'),
+        ],
+      ),
+      textAlign: align,
+      softWrap: true,
+    );
+  }
 
   // single card (Name • Area • Mobile • Balance)
-  Widget _debtorTile(Map<String, dynamic> d) {
+  Widget _debtorTile(Map<String, dynamic> d, BuildContext context) {
+    final Color primaryColor = Theme.of(context).primaryColor;
+    final Color errorColor = Theme.of(context).colorScheme.error;
+    final Color cardColor = Theme.of(context).cardColor;
+    final Color shadowColor = Theme.of(context).shadowColor;
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+
     final bal = (d['closingBalance'] as double?) ?? 0.0;
     final area = d['area'] ?? '-';
     final mobile = d['mobile'] ?? '-';
+
+    // Determine balance display and color
+    final displayBal = bal.abs().toStringAsFixed(2);
+    final balanceType = bal >= 0 ? 'Dr' : 'Cr'; // Assuming positive balance is Debit, negative is Credit
+    // For debtors, if bal > 0, they owe us (good - primaryColor), if bal <= 0, we owe them (bad - errorColor)
+    final balanceColor = bal >= 0 ? primaryColor : errorColor;
+
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -192,11 +241,12 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
         borderRadius: BorderRadius.circular(16),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: cardColor, // Use theme card color
             borderRadius: BorderRadius.circular(16),
-            boxShadow: const [
+            boxShadow: [
               BoxShadow(
-                  color: Colors.black12, blurRadius: 2, offset: Offset(0, 4)),
+                  color: shadowColor.withOpacity(0.12), // Use theme shadow color
+                  blurRadius: 2, offset: const Offset(0, 4)),
             ],
           ),
           child: IntrinsicHeight(
@@ -206,9 +256,9 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                 // accent bar
                 Container(
                   width: 8,
-                  decoration: const BoxDecoration(
-                    color: Colors.green,
-                    borderRadius: BorderRadius.only(
+                  decoration: BoxDecoration(
+                    color: primaryColor, // Use theme primary color
+                    borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(16),
                       bottomLeft: Radius.circular(16),
                     ),
@@ -228,23 +278,26 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                             Expanded(
                               child: Text(
                                 d['name'] ?? '',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600, fontSize: 16),
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                    color: onSurfaceColor // Ensure text is visible
+                                ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
                             const SizedBox(width: 8),
                             Chip(
-                              backgroundColor: Colors.green.shade100,
+                              backgroundColor: primaryColor.withOpacity(0.1), // Theme-aware background
                               padding:
                               const EdgeInsets.symmetric(horizontal: 4),
                               label: Text(
-                                '₹${bal.toStringAsFixed(2)} Dr',
-                                style: const TextStyle(
+                                '₹$displayBal $balanceType',
+                                style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 14,
-                                    color: Colors.green),
+                                    color: balanceColor), // Dynamic color based on balance
                               ),
                             ),
                           ],

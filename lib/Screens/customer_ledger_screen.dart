@@ -46,11 +46,24 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
     searchCtrl.dispose();
     searchFocus.dispose();
     _debounce?.cancel();
+
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Get theme colors and text styles once
+    final Color primaryColor = Theme.of(context).primaryColor;
+    final Color onPrimaryColor = Theme.of(context).colorScheme.onPrimary;
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color surfaceColor = Theme.of(context).colorScheme.surface;
+    final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
+    final Color cardColor = Theme.of(context).cardColor;
+    final Color errorColor = Theme.of(context).colorScheme.error;
+    final Color outlineColor = Theme.of(context).colorScheme.outline;
+    final Color shadowColor = Theme.of(context).shadowColor;
+
+
     return WillPopScope(
       onWillPop: () async {
         ctrl.clearFilter();
@@ -59,10 +72,10 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
         return true;
       },
       child: Scaffold(
-        appBar: CustomAppBar(title: const Text('Customer Ledger')),
+        appBar: CustomAppBar(title: Text('Customer Ledger', style: Theme.of(context).appBarTheme.titleTextStyle)),
         body: Obx(() {
           if (ctrl.isLoading.value) {
-            return const Center(child: DotsWaveLoadingText());
+            return Center(child: DotsWaveLoadingText(color: onSurfaceColor));
           }
 
           final names =
@@ -74,10 +87,11 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
             children: [
               RefreshIndicator(
                 onRefresh: () async => ctrl.loadData(),
+                color: primaryColor, // Use theme primary color
                 child: Column(
                   children: [
                     const SizedBox(height: 12),
-                    _autocomplete(names),
+                    _autocomplete(names, context), // Pass context
                     Expanded(
                       child: SingleChildScrollView(
                         controller: scrollCtrl,
@@ -87,7 +101,7 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Obx(() => _messages(names)),
+                            Obx(() => _messages(names, context)), // Pass context
                             if (txns.isNotEmpty)
                               _paginatedTable(context, txns),
                           ],
@@ -101,7 +115,7 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
                 bottom: 0,
                 left: 16,
                 right: 16,
-                child: _totals(net),
+                child: _totals(net, context), // Pass context
               ),
             ],
           );
@@ -109,15 +123,15 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
         floatingActionButton: Obx(() => showFab.value
             ? FloatingActionButton(
           heroTag: 'topBtn',
-          backgroundColor: Colors.green,
+          backgroundColor: primaryColor, // Use theme primary color
           onPressed: () => scrollCtrl.animateTo(
             0,
             duration: const Duration(milliseconds: 400),
             curve: Curves.easeOut,
           ),
-          child: const Icon(Icons.arrow_upward),
+          child: Icon(Icons.arrow_upward, color: onPrimaryColor), // Use theme onPrimary color
         )
-            : const SizedBox.shrink()   // 👈 return an inert widget instead of null
+            : const SizedBox.shrink()
         ),
       ),
     );
@@ -125,90 +139,111 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
 
   // ────────────────────── autocomplete & banner ──────────────────────
 
-  Widget _autocomplete(List<String> names) => RawAutocomplete<String>(
-    textEditingController: searchCtrl,
+  Widget _autocomplete(List<String> names, BuildContext context) {
+    // Retrieve theme colors inside the widget method
+    final Color primaryColor = Theme.of(context).primaryColor;
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
+    final Color cardColor = Theme.of(context).cardColor;
+    final Color shadowColor = Theme.of(context).shadowColor;
+
+    return RawAutocomplete<String>(
+      textEditingController: searchCtrl,
       focusNode: searchFocus,
-    optionsBuilder: (v) => v.text.isEmpty
-        ? const Iterable<String>.empty()
-        : names.where((n) => n.contains(v.text.toLowerCase())),
-    onSelected: (value) {
-      ctrl.filterByName(value);
-      searchQ.value = value;
-      searchFocus.unfocus();
-      FocusManager.instance.primaryFocus?.unfocus();
-    },
-    fieldViewBuilder: (c, t, f, _) => TextField(
-      controller: t,
-      focusNode: f,
-      decoration: InputDecoration(
-        hintText: 'Search by Account Name',
-        prefixIcon: const Icon(Icons.search, color: Colors.green),
-        suffixIcon: t.text.isEmpty
-            ? null
-            : IconButton(
-          icon: const Icon(Icons.clear),
-          onPressed: () {
-            t.clear();
-            searchQ.value = '';
-            ctrl.clearFilter();
-            FocusScope.of(context).unfocus();
-          },
+      optionsBuilder: (v) => v.text.isEmpty
+          ? const Iterable<String>.empty()
+          : names.where((n) => n.contains(v.text.toLowerCase())),
+      onSelected: (value) {
+        ctrl.filterByName(value);
+        searchQ.value = value;
+        searchFocus.unfocus();
+        FocusManager.instance.primaryFocus?.unfocus();
+      },
+      fieldViewBuilder: (c, t, f, _) => TextField(
+        controller: t,
+        focusNode: f,
+        decoration: InputDecoration(
+          hintText: 'Search by Account Name',
+          prefixIcon: Icon(Icons.search, color: primaryColor), // Use theme primary color
+          suffixIcon: t.text.isEmpty
+              ? null
+              : IconButton(
+            icon: Icon(Icons.clear, color: Theme.of(c).iconTheme.color), // Use theme icon color
+            onPressed: () {
+              t.clear();
+              searchQ.value = '';
+              ctrl.clearFilter();
+              FocusScope.of(context).unfocus();
+            },
+          ),
+          filled: true,
+          // Use theme-aware fill color, fallback to surfaceVariant
+          fillColor: Theme.of(c).inputDecorationTheme.fillColor ?? surfaceVariantColor,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide.none,
+          ),
+          hintStyle: TextStyle(color: onSurfaceColor.withOpacity(0.6)), // Hint text color
+          labelStyle: TextStyle(color: onSurfaceColor), // Label text color
         ),
-        filled: true,
-        fillColor: Colors.grey.shade100,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
-        ),
+        style: TextStyle(color: onSurfaceColor), // Input text color
+        onSubmitted: (v) {
+          ctrl.filterByName(v.trim());
+          searchQ.value = v.trim();
+        },
+        onChanged: (v) {
+          _debounce?.cancel();
+          _debounce =
+              Timer(const Duration(milliseconds: 300), () => searchQ.value = v);
+        },
       ),
-      onSubmitted: (v) {
-        ctrl.filterByName(v.trim());
-        searchQ.value = v.trim();
-      },
-      onChanged: (v) {
-        _debounce?.cancel();
-        _debounce =
-            Timer(const Duration(milliseconds: 300), () => searchQ.value = v);
-      },
-    ),
-    optionsViewBuilder: (c, onSel, opts) => Align(
-      alignment: Alignment.topLeft,
-      child: Material(
-        elevation: 4,
-        borderRadius: BorderRadius.circular(8),
-        child: SizedBox(
-          width: MediaQuery.of(c).size.width - 24,
-          child: ListView.builder(
-            padding: EdgeInsets.zero,
-            shrinkWrap: true,
-            itemCount: opts.length,
-            itemBuilder: (_, i) => ListTile(
-              title: Text(opts.elementAt(i)),
-              onTap: () => onSel(opts.elementAt(i)),
+      optionsViewBuilder: (c, onSel, opts) => Align(
+        alignment: Alignment.topLeft,
+        child: Material(
+          elevation: 4,
+          borderRadius: BorderRadius.circular(8),
+          color: cardColor, // Use theme card color for dropdown background
+          child: SizedBox(
+            width: MediaQuery.of(c).size.width - 24,
+            child: ListView.builder(
+              padding: EdgeInsets.zero,
+              shrinkWrap: true,
+              itemCount: opts.length,
+              itemBuilder: (_, i) => ListTile(
+                title: Text(opts.elementAt(i), style: TextStyle(color: onSurfaceColor)), // Text color for options
+                onTap: () => onSel(opts.elementAt(i)),
+              ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
-  Widget _messages(List<String> names) {
+  Widget _messages(List<String> names, BuildContext context) {
     final q = searchQ.value.trim();
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color errorColor = Theme.of(context).colorScheme.error;
+    final Color warningColor = Theme.of(context).colorScheme.tertiary; // Use tertiary for warnings or an orange-like color
+
     if (q.isEmpty) {
-      return const Text('Search an account name to see outstanding…');
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: Text('Search an account name to see outstanding…', style: TextStyle(color: onSurfaceColor.withOpacity(0.7))),
+      );
     }
     if (!names.contains(q.toLowerCase())) {
       return Padding(
         padding: const EdgeInsets.all(20),
         child: Text('No customer or supplier named "$q" found.',
-            style: const TextStyle(color: Colors.red)),
+            style: TextStyle(color: errorColor)), // Use theme error color
       );
     }
     if (ctrl.filtered.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(20),
         child: Text('No transactions found for "$q".',
-            style: const TextStyle(color: Colors.orange)),
+            style: TextStyle(color: warningColor)), // Use theme warning color
       );
     }
     return const SizedBox.shrink();
@@ -216,12 +251,18 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
 
   // ───────────────────────── table & totals ──────────────────────────
 
-  Widget _paginatedTable(BuildContext _, List<AllAccountsModel> txns) {
+  Widget _paginatedTable(BuildContext context, List<AllAccountsModel> txns) {
     final totalRows = txns.length + 1;           // +1 for summary row
     final rowsPer   = totalRows < 10 ? totalRows : 10;
 
+    // Get theme colors for the table
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color surfaceColor = Theme.of(context).colorScheme.surface;
+    final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
+
     return PaginatedDataTable(
-      headingRowColor: MaterialStateProperty.all(Colors.lightGreen[100]),
+      // Use theme-aware color for heading row
+      headingRowColor: MaterialStateProperty.all(surfaceVariantColor),
       columnSpacing: 30,
 
       // if fewer than 10 rows, show them all; else fixed at 10
@@ -230,88 +271,113 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
           ? [rowsPer]          // no dropdown when only one page size
           : const [10],        // fixed 10 for larger datasets
 
-      columns: const [
-        DataColumn(label: Text('Sr.')),
-        DataColumn(label: Text('Date')),
-        DataColumn(label: SizedBox(width: 120, child: Text('Type'))),
-        DataColumn(label: Text('Invoice')),
-        DataColumn(label: Text('Debit')),
-        DataColumn(label: Text('Credit')),
-        DataColumn(label: Text('Balance')),
+      columns: [
+        DataColumn(label: Text('Sr.', style: TextStyle(color: onSurfaceColor))),
+        DataColumn(label: Text('Date', style: TextStyle(color: onSurfaceColor))),
+        DataColumn(label: SizedBox(width: 120, child: Text('Type', style: TextStyle(color: onSurfaceColor)))),
+        DataColumn(label: Text('Invoice', style: TextStyle(color: onSurfaceColor))),
+        DataColumn(label: Text('Debit', style: TextStyle(color: onSurfaceColor))),
+        DataColumn(label: Text('Credit', style: TextStyle(color: onSurfaceColor))),
+        DataColumn(label: Text('Balance', style: TextStyle(color: onSurfaceColor))),
       ],
-      source: _LedgerSource(txns),
+      source: _LedgerSource(txns, context), // Pass context to _LedgerSource
     );
   }
 
 
-  Widget _totals(double net) => Container(
-    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: Colors.grey.shade50,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: Colors.green.shade100),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _row('Dr Total', ctrl.drTotal.value),
-        const SizedBox(height: 8),
-        _row('Cr Total', ctrl.crTotal.value),
-        const Divider(),
-        Row(
-          children: [
-            const Text('Net Outstanding: ',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            Text('₹${net.abs().toStringAsFixed(2)} ',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: net < 0 ? Colors.red : Colors.green)),
-            Text(net < 0 ? 'Cr' : 'Dr',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: net < 0 ? Colors.red : Colors.green)),
-          ],
-        ),
-      ],
-    ),
-  );
+  Widget _totals(double net, BuildContext context) {
+    // Get theme colors for the totals section
+    final Color primaryColor = Theme.of(context).primaryColor;
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color cardColor = Theme.of(context).cardColor;
+    final Color outlineColor = Theme.of(context).colorScheme.outline;
+    final Color errorColor = Theme.of(context).colorScheme.error;
 
-  Widget _row(String label, double amt) => Row(
-    children: [
-      Expanded(child: Text('$label:')),
-      Text('₹${amt.toStringAsFixed(2)}',
-          style: const TextStyle(
-              fontWeight: FontWeight.bold, color: Colors.green)),
-    ],
-  );
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardColor, // Use theme card color
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: outlineColor), // Use theme outline color
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _row('Dr Total', ctrl.drTotal.value, context), // Pass context
+          const SizedBox(height: 8),
+          _row('Cr Total', ctrl.crTotal.value, context), // Pass context
+          Divider(color: outlineColor), // Theme-aware divider color
+          Row(
+            children: [
+              Text('Net Outstanding: ',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: onSurfaceColor)), // Theme-aware text color
+              Text('₹${net.abs().toStringAsFixed(2)} ',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: net < 0 ? errorColor : primaryColor)), // Theme-aware colors
+              Text(net < 0 ? 'Cr' : 'Dr',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: net < 0 ? errorColor : primaryColor)), // Theme-aware colors
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(String label, double amt, BuildContext context) {
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color primaryColor = Theme.of(context).primaryColor;
+    return Row(
+      children: [
+        Expanded(child: Text('$label:', style: TextStyle(color: onSurfaceColor))), // Theme-aware text color
+        Text('₹${amt.toStringAsFixed(2)}',
+            style: TextStyle(
+                fontWeight: FontWeight.bold, color: primaryColor)), // Theme-aware color
+      ],
+    );
+  }
 }
 
 // ───────────────── LedgerSource (sorted + Net Outstanding) ──────────────
 class _LedgerSource extends DataTableSource {
-  _LedgerSource(this.txns) {
+  // Modified constructor to accept BuildContext
+  _LedgerSource(this.txns, this.context) {
     txns.sort((a, b) => a.transactionDate.compareTo(b.transactionDate));
     netOutstanding =
         txns.fold<double>(0, (p, t) => p + (t.isDr ? t.amount : -t.amount));
   }
 
   final List<AllAccountsModel> txns;
+  final BuildContext context; // Store context to access theme
   late final double netOutstanding;
   double runningBal = 0;
 
   @override
   DataRow? getRow(int index) {
+    // Get theme colors inside getRow
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color surfaceColor = Theme.of(context).colorScheme.surface;
+    final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
+    final Color primaryColor = Theme.of(context).primaryColor;
+    final Color errorColor = Theme.of(context).colorScheme.error;
+    final Color cardColor = Theme.of(context).cardColor;
+    final Color shadowColor = Theme.of(context).shadowColor;
+
     // ─── summary row (no Sr. number) ───────────────────────────
     if (index == txns.length) {
       final isCr = netOutstanding < 0;
       return DataRow.byIndex(
         index: index,
-        color: MaterialStateProperty.all(Colors.lightGreen[100]),
+        // Use theme-aware color for summary row
+        color: MaterialStateProperty.all(surfaceVariantColor),
         cells: [
           const DataCell(Text('')),                      // ← empty Sr.
           const DataCell(Text('')),                      // Date blank
-          const DataCell(Text('Closing Balance',
-              style: TextStyle(fontWeight: FontWeight.bold))),
+          DataCell(Text('Closing Balance',
+              style: TextStyle(fontWeight: FontWeight.bold, color: onSurfaceColor))), // Theme-aware text color
           const DataCell(Text('-')),                     // Invoice
           const DataCell(Text('-')),                     // Debit
           const DataCell(Text('-')),                     // Credit
@@ -319,7 +385,7 @@ class _LedgerSource extends DataTableSource {
             '₹${netOutstanding.abs().toStringAsFixed(2)} ${isCr ? 'Cr' : 'Dr'}',
             style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: isCr ? Colors.red : Colors.green),
+                color: isCr ? errorColor : primaryColor), // Theme-aware colors
           )),
         ],
       );
@@ -332,11 +398,12 @@ class _LedgerSource extends DataTableSource {
 
     return DataRow.byIndex(
       index: index,
+      // Use theme-aware colors for alternating row backgrounds
       color: MaterialStateProperty.all(
-          index.isEven ? Colors.white : Colors.green[50]),
+          index.isEven ? surfaceColor : surfaceVariantColor),
       cells: [
-        DataCell(Text('${index + 1}')),                 // Sr. #
-        DataCell(Text(DateFormat('dd/MM/yy').format(t.transactionDate))),
+        DataCell(Text('${index + 1}', style: TextStyle(color: onSurfaceColor))),                 // Sr. #
+        DataCell(Text(DateFormat('dd/MM/yy').format(t.transactionDate), style: TextStyle(color: onSurfaceColor))),
         DataCell(
           SizedBox(
             width: 120,
@@ -344,36 +411,36 @@ class _LedgerSource extends DataTableSource {
               t.narrations,
               overflow: TextOverflow.ellipsis,
               style: t.narrations.toLowerCase() == 'opening balance'
-                  ? const TextStyle(fontWeight: FontWeight.bold)
-                  : null,
+                  ? TextStyle(fontWeight: FontWeight.bold, color: onSurfaceColor) // Theme-aware color
+                  : TextStyle(color: onSurfaceColor), // Theme-aware color
             ),
           ),
           // 👇 show floating snackbar on tap
           onTap: () => Get.snackbar(
             '', '',
-            titleText: const Text('Narration',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
+            titleText: Text('Narration',
+                style: TextStyle(fontWeight: FontWeight.bold, color: onSurfaceColor)), // Theme-aware color
             messageText:
-            Text(t.narrations, style: const TextStyle(color: Colors.black)),
+            Text(t.narrations, style: TextStyle(color: onSurfaceColor)), // Theme-aware color
             snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.white,
+            backgroundColor: cardColor, // Use theme card color
             borderRadius: 12,
             margin: const EdgeInsets.all(16),
             snackStyle: SnackStyle.FLOATING,
             duration: const Duration(seconds: 4),
             animationDuration: const Duration(milliseconds: 300),
-            boxShadows: const [
-              BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
+            boxShadows: [
+              BoxShadow(color: shadowColor.withOpacity(0.26), blurRadius: 8, offset: const Offset(0, 4)) // Theme-aware shadow
             ],
           ),
         ),
 
-        DataCell(Center(child: Text(t.invoiceNo?.toString() ?? '-'))),
-        DataCell(Text(t.isDr ? t.amount.toStringAsFixed(2) : '-')),
-        DataCell(Text(!t.isDr ? t.amount.toStringAsFixed(2) : '-')),
+        DataCell(Center(child: Text(t.invoiceNo?.toString() ?? '-', style: TextStyle(color: onSurfaceColor)))), // Theme-aware color
+        DataCell(Text(t.isDr ? t.amount.toStringAsFixed(2) : '-', style: TextStyle(color: onSurfaceColor))), // Theme-aware color
+        DataCell(Text(!t.isDr ? t.amount.toStringAsFixed(2) : '-', style: TextStyle(color: onSurfaceColor))), // Theme-aware color
         DataCell(Text('₹${runningBal.toStringAsFixed(2)}',
             style: TextStyle(
-                color: runningBal < 0 ? Colors.red : Colors.green))),
+                color: runningBal < 0 ? errorColor : primaryColor))), // Theme-aware colors
       ],
     );
   }

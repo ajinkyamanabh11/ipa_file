@@ -26,7 +26,7 @@ class _SalesScreenState extends State<SalesScreen> {
   DateTime picked = DateUtils.dateOnly(DateTime.now());
 
   bool asc = true;
-  bool showCash = true;
+  bool showCash = true; // Default to showing cash sales
   bool showCredit = false;
 
   @override
@@ -54,17 +54,36 @@ class _SalesScreenState extends State<SalesScreen> {
   // ─── build ────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    // Get theme colors and text styles once
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color primaryColor = Theme.of(context).primaryColor;
+    final Color cardColor = Theme.of(context).cardColor;
+    final Color borderColor = Theme.of(context).colorScheme.outline; // A general border color
+    final Color shadowColor = Theme.of(context).shadowColor;
+    final Color errorColor = Theme.of(context).colorScheme.error;
+
     return Scaffold(
       appBar: const CustomAppBar(title: Text('Sales Report')),
       body: Stack(
         children: [
           RefreshIndicator(
+            color: primaryColor, // Use theme primary color for refresh indicator
             onRefresh: () async => sc.fetchSales(),
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Obx(() {
-                if (sc.isLoading.value) return const Center(child: DotsWaveLoadingText());
-                if (sc.error.value != null) return Center(child: Text('❌ ${sc.error.value!}'));
+                if (sc.isLoading.value) {
+                  // Use theme-aware color for loading text
+                  return Center(child: DotsWaveLoadingText(color: onSurfaceColor));
+                }
+                if (sc.error.value != null) {
+                  return Center(
+                    child: Text(
+                      '❌ ${sc.error.value!}',
+                      style: TextStyle(color: errorColor), // Use theme error color
+                    ),
+                  );
+                }
 
                 final data = _filtered();
                 final cashRows = data
@@ -85,27 +104,39 @@ class _SalesScreenState extends State<SalesScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: _totBtn('Cash Sale', totCash, showCash, () {
-                            setState(() {
-                              showCash = !showCash;
-                              showCredit = false;
-                            });
-                          }),
+                          child: _totBtn(
+                            'Cash Sale',
+                            totCash,
+                            showCash,
+                                () {
+                              setState(() {
+                                showCash = !showCash;
+                                showCredit = false; // Ensure only one is active at a time
+                              });
+                            },
+                            context, // Pass context
+                          ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: _totBtn('Credit Sale', totCredit, showCredit, () {
-                            setState(() {
-                              showCredit = !showCredit;
-                              showCash = false;
-                            });
-                          }),
+                          child: _totBtn(
+                            'Credit Sale',
+                            totCredit,
+                            showCredit,
+                                () {
+                              setState(() {
+                                showCredit = !showCredit;
+                                showCash = false; // Ensure only one is active at a time
+                              });
+                            },
+                            context, // Pass context
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    if (showCash) _paginatedTable(cashRows),
-                    if (showCredit) _paginatedTable(creRows),
+                    if (showCash) _paginatedTable(cashRows, context), // Pass context
+                    if (showCredit) _paginatedTable(creRows, context), // Pass context
                   ],
                 );
               }),
@@ -118,36 +149,49 @@ class _SalesScreenState extends State<SalesScreen> {
             left: 16,
             right: 16,
             child: Obx(() {
+              final currentFilteredData = sc.filter(nameQ: nameCtrl.text, billQ: billCtrl.text, date: picked);
+
               final totCash = _sum(
-                sc.filter(nameQ: nameCtrl.text, billQ: billCtrl.text, date: picked)
-                    .where((m) => m['PaymentMode'].toString().toLowerCase() == 'cash')
-                    .toList(),
+                currentFilteredData.where((m) => m['PaymentMode'].toString().toLowerCase() == 'cash').toList(),
               );
               final totCredit = _sum(
-                sc.filter(nameQ: nameCtrl.text, billQ: billCtrl.text, date: picked)
-                    .where((m) => m['PaymentMode'].toString().toLowerCase() == 'credit')
-                    .toList(),
+                currentFilteredData.where((m) => m['PaymentMode'].toString().toLowerCase() == 'credit').toList(),
               );
               final grandTotal = totCash + totCredit;
 
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: cardColor, // Use theme card color for background
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.green.shade200),
-                  boxShadow: const [
-                    BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3)),
+                  border: Border.all(color: borderColor), // Use theme-aware border color
+                  boxShadow: [
+                    BoxShadow(
+                      color: shadowColor.withOpacity(0.2), // Use theme shadow color
+                      blurRadius: 6,
+                      offset: const Offset(0, 3),
+                    ),
                   ],
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Grand Total',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    Text('₹${grandTotal.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green)),
+                    Text(
+                      'Grand Total',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: onSurfaceColor, // Text color on card background
+                      ),
+                    ),
+                    Text(
+                      '₹${grandTotal.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: primaryColor, // Use theme primary color for highlight
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -161,14 +205,14 @@ class _SalesScreenState extends State<SalesScreen> {
   // ────────────── UI helpers (filters / buttons) ───────────────
   Widget _filters(BuildContext ctx) => Row(
     children: [
-      _searchBox(nameCtrl, 'Name'),
+      _searchBox(nameCtrl, 'Name', ctx), // Pass context
       const SizedBox(width: 8),
-      _searchBox(billCtrl, 'Bill No'),
+      _searchBox(billCtrl, 'Bill No', ctx), // Pass context
       Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            icon: const Icon(Icons.date_range),
+            icon: Icon(Icons.date_range, color: Theme.of(ctx).iconTheme.color), // Use theme icon color
             tooltip: DateFormat('dd‑MMM‑yyyy').format(picked),
             onPressed: () async {
               final d = await showDatePicker(
@@ -176,97 +220,157 @@ class _SalesScreenState extends State<SalesScreen> {
                 initialDate: picked,
                 firstDate: DateTime(2000),
                 lastDate: DateTime(2100),
+                builder: (context, child) {
+                  // Ensure date picker itself respects theme
+                  return Theme(
+                    data: Theme.of(context).copyWith(
+                      colorScheme: Theme.of(context).colorScheme.copyWith(
+                        primary: Theme.of(context).primaryColor, // Highlight color
+                        onPrimary: Theme.of(context).colorScheme.onPrimary, // Text on highlight
+                        surface: Theme.of(context).colorScheme.surface, // Background for calendar
+                        onSurface: Theme.of(context).colorScheme.onSurface, // Text on background
+                      ),
+                      textButtonTheme: TextButtonThemeData(
+                        style: TextButton.styleFrom(
+                          foregroundColor: Theme.of(context).primaryColor, // OK/Cancel button text
+                        ),
+                      ),
+                    ),
+                    child: child!,
+                  );
+                },
               );
               if (d != null) setState(() => picked = DateUtils.dateOnly(d));
             },
           ),
-          Text(_fmt(picked), style: const TextStyle(fontSize: 11)),
+          Text(
+            _fmt(picked),
+            style: TextStyle(fontSize: 11, color: Theme.of(ctx).textTheme.bodySmall?.color), // Theme-aware text color
+          ),
         ],
       ),
       const SizedBox(width: 4),
       IconButton(
         tooltip: asc ? 'Sort Asc' : 'Sort Desc',
-        icon: Icon(asc ? Icons.arrow_upward : Icons.arrow_downward),
+        icon: Icon(asc ? Icons.arrow_upward : Icons.arrow_downward, color: Theme.of(ctx).iconTheme.color), // Use theme icon color
         onPressed: () => setState(() => asc = !asc),
       ),
     ],
   );
 
-  Widget _searchBox(TextEditingController c, String hint) => Expanded(
+  Widget _searchBox(TextEditingController c, String hint, BuildContext ctx) => Expanded(
     child: TextField(
       controller: c,
       decoration: InputDecoration(
         labelText: hint,
         filled: true,
-        fillColor: Colors.green.shade50,
+        // Use theme-aware fill color
+        fillColor: Theme.of(ctx).inputDecorationTheme.fillColor ?? Theme.of(ctx).colorScheme.surfaceVariant,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Theme.of(ctx).colorScheme.outline), // Theme-aware border
+        ),
+        // Ensure label text and input text colors are theme-aware
+        labelStyle: TextStyle(color: Theme.of(ctx).colorScheme.onSurface.withOpacity(0.7)),
+        floatingLabelStyle: TextStyle(color: Theme.of(ctx).primaryColor),
+        hintStyle: TextStyle(color: Theme.of(ctx).colorScheme.onSurface.withOpacity(0.5)),
       ),
+      style: TextStyle(color: Theme.of(ctx).colorScheme.onSurface), // Input text color
       onChanged: (_) => setState(() {}),
     ),
   );
 
-  Widget _totBtn(String label, double amt, bool active, VoidCallback tap) =>
+  Widget _totBtn(String label, double amt, bool active, VoidCallback tap, BuildContext ctx) =>
       ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: active ? Colors.green : Colors.grey.shade200,
-          foregroundColor: active ? Colors.white : Colors.black,
+          // Use theme-aware background colors
+          backgroundColor: active ? Theme.of(ctx).primaryColor : Theme.of(ctx).colorScheme.surfaceVariant,
+          // Use theme-aware foreground colors
+          foregroundColor: active ? Theme.of(ctx).colorScheme.onPrimary : Theme.of(ctx).colorScheme.onSurface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
         onPressed: tap,
-        child: Text('$label: ₹${amt.toStringAsFixed(2)}',
-            style: const TextStyle(fontWeight: FontWeight.w600)),
+        child: Text(
+          '$label: ₹${amt.toStringAsFixed(2)}',
+          style: const TextStyle(fontWeight: FontWeight.w600), // Text color is handled by foregroundColor
+        ),
       );
 
   // ───────────────────── paginated table ──────────────────────
-  Widget _paginatedTable(List<Map<String, dynamic>> rows) {
-    if (rows.isEmpty) return const Center(child: Text('No records.'));
+  // Modified to accept BuildContext
+  Widget _paginatedTable(List<Map<String, dynamic>> rows, BuildContext ctx) {
+    if (rows.isEmpty) {
+      return Center(
+        child: Text(
+          'No records.',
+          style: TextStyle(color: Theme.of(ctx).colorScheme.onSurface), // Theme-aware text color
+        ),
+      );
+    }
 
-    final totalRows = rows.length + 1;        // +1 summary row
-    final rowsPer   = totalRows < 10 ? totalRows : 10;
+    final totalRows = rows.length + 1; // +1 summary row
+    final rowsPer = totalRows < 10 ? totalRows : 10;
+
+    // Get theme colors for the table
+    final Color onSurfaceColor = Theme.of(ctx).colorScheme.onSurface;
+    final Color surfaceColor = Theme.of(ctx).colorScheme.surface;
+    final Color surfaceVariantColor = Theme.of(ctx).colorScheme.surfaceVariant;
 
     return PaginatedDataTable(
-      headingRowColor: MaterialStateProperty.all(Colors.lightGreen[100]),
+      // Use theme-aware color for heading row
+      headingRowColor: MaterialStateProperty.all(surfaceVariantColor),
       columnSpacing: 28,
       rowsPerPage: rowsPer,
       availableRowsPerPage: totalRows < 10 ? [rowsPer] : const [10],
       showFirstLastButtons: true,
-      columns: const [
-        DataColumn(label: Text('Sr.')),
-        DataColumn(label: Text('Name')),
-        DataColumn(label: Text('Bill No')),
-        DataColumn(label: Text('Date')),
-        DataColumn(label: Text('Amount')),
+      columns: [
+        // Ensure column labels also respect text theme
+        DataColumn(label: Text('Sr.', style: TextStyle(color: onSurfaceColor))),
+        DataColumn(label: Text('Name', style: TextStyle(color: onSurfaceColor))),
+        DataColumn(label: Text('Bill No', style: TextStyle(color: onSurfaceColor))),
+        DataColumn(label: Text('Date', style: TextStyle(color: onSurfaceColor))),
+        DataColumn(label: Text('Amount', style: TextStyle(color: onSurfaceColor))),
       ],
-      source: _SalesSource(rows),
+      // Pass context to _SalesSource
+      source: _SalesSource(rows, ctx),
     );
   }
 }
 
 // ───────────────────── DataTableSource ──────────────────────
+// Modified to accept BuildContext
 class _SalesSource extends DataTableSource {
-  _SalesSource(this.data) {
+  _SalesSource(this.data, this.context) {
     grandTotal = data.fold<double>(0, (p, e) => p + (e['Amount'] ?? 0));
   }
 
   final List<Map<String, dynamic>> data;
+  final BuildContext context; // Store context
   late final double grandTotal;
 
   @override
   DataRow? getRow(int index) {
+    // Get theme colors
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color surfaceColor = Theme.of(context).colorScheme.surface;
+    final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
+    final Color primaryColor = Theme.of(context).primaryColor;
+
     // summary row
     if (index == data.length) {
       return DataRow.byIndex(
         index: index,
-        color: MaterialStateProperty.all(Colors.lightGreen[100]),
+        // Use theme-aware color for summary row
+        color: MaterialStateProperty.all(surfaceVariantColor),
         cells: [
           const DataCell(Text('')),
-          const DataCell(Text('Grand Total',
-              style: TextStyle(fontWeight: FontWeight.bold))),
+          DataCell(Text('Grand Total',
+              style: TextStyle(fontWeight: FontWeight.bold, color: onSurfaceColor))), // Theme-aware text color
           const DataCell(Text('-')),
           const DataCell(Text('-')),
           DataCell(Text('₹${grandTotal.toStringAsFixed(2)}',
-              style: const TextStyle(fontWeight: FontWeight.bold))),
+              style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor))), // Theme-aware text color (e.g., primary for total)
         ],
       );
     }
@@ -275,14 +379,15 @@ class _SalesSource extends DataTableSource {
     final m = data[index];
     return DataRow.byIndex(
       index: index,
+      // Use theme-aware colors for alternating row backgrounds
       color: MaterialStateProperty.all(
-          index.isEven ? Colors.white : Colors.green[50]),
+          index.isEven ? surfaceColor : surfaceVariantColor),
       cells: [
-        DataCell(Text('${index + 1}')),
-        DataCell(Text(m['AccountName'] ?? '')),
-        DataCell(Text(m['BillNo'].toString())),
-        DataCell(Text(DateFormat('dd‑MMM‑yyyy').format(m['EntryDate']))),
-        DataCell(Text('₹${(m['Amount'] ?? 0).toStringAsFixed(2)}')),
+        DataCell(Text('${index + 1}', style: TextStyle(color: onSurfaceColor))), // Theme-aware text color
+        DataCell(Text(m['AccountName'] ?? '', style: TextStyle(color: onSurfaceColor))), // Theme-aware text color
+        DataCell(Text(m['BillNo'].toString(), style: TextStyle(color: onSurfaceColor))), // Theme-aware text color
+        DataCell(Text(DateFormat('dd‑MMM‑yyyy').format(m['EntryDate']), style: TextStyle(color: onSurfaceColor))), // Theme-aware text color
+        DataCell(Text('₹${(m['Amount'] ?? 0).toStringAsFixed(2)}', style: TextStyle(color: onSurfaceColor))), // Theme-aware text color
       ],
     );
   }

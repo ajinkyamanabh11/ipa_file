@@ -45,7 +45,10 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    routeObserver.subscribe(this, ModalRoute.of(context)!);
+    final ModalRoute<void>? route = ModalRoute.of(context);
+    if (route != null) {
+      routeObserver.subscribe(this, route);
+    }
   }
 
   @override
@@ -88,23 +91,35 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
 
   @override
   Widget build(BuildContext context) {
+    // Get theme colors here once
+    final Color primaryColor = Theme.of(context).primaryColor;
+    final Color onPrimaryColor = Theme.of(context).colorScheme.onPrimary;
+    final Color cardBackgroundColor = Theme.of(context).cardColor;
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color iconColor = Theme.of(context).iconTheme.color ?? onSurfaceColor; // Default icon color
+    final Color shadowColor = Theme.of(context).shadowColor;
+
+
     return Scaffold(
       appBar: CustomAppBar(title: Text('🛒 $itemType Items')),
       floatingActionButton: _showFab
           ? FloatingActionButton(
-        backgroundColor: Colors.green,
+        // Use theme's primary color
+        backgroundColor: primaryColor,
         onPressed: () => _scroll.animateTo(
           0,
           duration: const Duration(milliseconds: 500),
           curve: Curves.easeOut,
         ),
-        child: const Icon(Icons.arrow_upward, color: Colors.white),
+        // Use theme's onPrimary color for icon
+        child: Icon(Icons.arrow_upward, color: onPrimaryColor),
       )
           : null,
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            // RoundedSearchField should be theme-aware internally
             child: RoundedSearchField(
               controller: _searchController,
               focusNode: _focusNode,
@@ -118,9 +133,17 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
           ),
           Expanded(
             child: RefreshIndicator(
-              color: Colors.green,
+              // Use theme's primary color for refresh indicator
+              color: primaryColor,
               onRefresh: _handleRefresh,
-              child: ListView.builder(
+              child: filteredItems.isEmpty
+                  ? Center(
+                child: Text(
+                  'No items found for $itemType.',
+                  style: TextStyle(color: onSurfaceColor), // Theme-aware text color
+                ),
+              )
+                  : ListView.builder(
                 controller: _scroll,
                 itemCount: filteredItems.length,
                 itemBuilder: (_, index) {
@@ -140,13 +163,15 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
                       },
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          // Use theme's card background color
+                          color: cardBackgroundColor,
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
                               blurRadius: 2,
                               offset: const Offset(0, 4),
-                              color: Colors.black.withOpacity(.12),
+                              // Use theme's shadow color (or onSurface with opacity)
+                              color: shadowColor.withOpacity(.12),
                             ),
                           ],
                         ),
@@ -157,9 +182,10 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
                               // green accent
                               Container(
                                 width: 8,
-                                decoration: const BoxDecoration(
-                                  color: Colors.green,
-                                  borderRadius: BorderRadius.only(
+                                decoration: BoxDecoration(
+                                  // Use theme's primary color for accent
+                                  color: primaryColor,
+                                  borderRadius: const BorderRadius.only(
                                     topLeft: Radius.circular(16),
                                     bottomLeft: Radius.circular(16),
                                   ),
@@ -174,7 +200,11 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
                                     final d =
                                     controller.latestDetailByCode[code];
                                     if (d == null) {
-                                      return const Text('Detail loading…');
+                                      // Text color adapts automatically if parent container is theme-aware
+                                      return Text(
+                                        'Detail loading…',
+                                        style: Theme.of(context).textTheme.bodyMedium,
+                                      );
                                     }
                                     return Column(
                                       crossAxisAlignment:
@@ -185,7 +215,7 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
                                             Expanded(
                                               child: Text(
                                                 item['ItemName'] ?? 'Unnamed',
-                                                style: const TextStyle(
+                                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                                   fontWeight: FontWeight.w600,
                                                   fontSize: 16,
                                                 ),
@@ -198,9 +228,11 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
                                         const SizedBox(height: 4),
                                         Text(
                                           'Item Code: $code',
-                                          style: const TextStyle(
-                                              fontSize: 13,
-                                              color: Colors.black),
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            // Explicitly set color for this specific text
+                                            color: onSurfaceColor.withOpacity(0.7),
+                                            fontSize: 13,
+                                          ),
                                         ),
                                       ],
                                     );
@@ -208,12 +240,12 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
                                 ),
                               ),
                               // right arrow
-                              const Padding(
-                                padding: EdgeInsets.only(right :30),
+                              Padding(
+                                padding: const EdgeInsets.only(right :30),
                                 child: Icon(
                                   Icons.arrow_forward_ios_rounded,
                                   size: 18,
-                                  color: Colors.grey,
+                                  color: iconColor, // Use theme's icon color
                                 ),
                               ),
 

@@ -3,10 +3,19 @@ import 'package:intl/intl.dart';
 import '../constants/paths.dart';
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
+import 'package:get_storage/get_storage.dart'; // Import GetStorage
 import 'dart:developer';
 
 class ProfitReportController extends GetxController {
   final drive = Get.find<GoogleDriveService>();
+  final GetStorage _box = GetStorage(); // Get an instance of GetStorage
+
+  static const String _masterCacheKey = 'salesMasterCsv';
+  static const String _detailsCacheKey = 'salesDetailsCsv';
+  static const String _itemMasterCacheKey = 'itemMasterCsv';
+  static const String _itemDetailCacheKey = 'itemDetailCsv';
+  static const String _lastSyncTimestampKey = 'lastProfitSync';
+  static const Duration _cacheDuration = Duration(minutes: 10); // How long cache is valid
 
   DateTime fromDate = DateTime.now();
   DateTime toDate = DateTime.now();
@@ -30,13 +39,14 @@ class ProfitReportController extends GetxController {
       return item.contains(search) || bill.contains(search);
     }).toList();
   }
+
   void resetProfits() {
     batchProfits.clear();
     totalSales.value = 0.0;
     totalPurchase.value = 0.0;
     totalProfit.value = 0.0;
-    // isLoading.value = false; // You might not need to reset this here
   }
+
   Future<void> loadProfitReport({
     required DateTime startDate,
     required DateTime endDate,
@@ -77,12 +87,8 @@ class ProfitReportController extends GetxController {
     totalProfit.value = profit;
   }
 
-  // Helper function to normalize packing strings for comparison
   String _normalizePacking(String packing) {
     if (packing == null || packing.isEmpty) return '';
-    // This regex replaces '.0' at the end of a number with an empty string,
-    // effectively converting "10.0KG" to "10KG".
-    // It also removes any trailing ".0" from a purely numeric part.
     return packing.replaceAllMapped(RegExp(r'(\d+)\.0(\D*)$'), (match) {
       return '${match.group(1)}${match.group(2)}';
     }).toUpperCase().trim();
@@ -97,9 +103,48 @@ class ProfitReportController extends GetxController {
     final path = await SoftAgriPath.build(drive);
     final folderId = await drive.folderId(path);
 
-    final fileIdMaster = await drive.fileId('SalesInvoiceMaster.csv', folderId);
-    final csvMaster = await drive.downloadCsv(fileIdMaster);
-    final masterRows = CsvUtils.toMaps(csvMaster);
+    // --- Caching Logic ---
+    String? masterCsv;
+    String? detailsCsv;
+    String? itemMasterCsv;
+    String? itemDetailCsv;
+
+    final lastSync = _box.read<int?>(_lastSyncTimestampKey);
+    final isCacheValid = lastSync != null &&
+        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastSync)) < _cacheDuration;
+
+    if (isCacheValid) {
+      print('💡 Using cached CSVs (valid for ${_cacheDuration.inMinutes} mins)');
+      masterCsv = _box.read(_masterCacheKey);
+      detailsCsv = _box.read(_detailsCacheKey);
+      itemMasterCsv = _box.read(_itemMasterCacheKey);
+      itemDetailCsv = _box.read(_itemDetailCacheKey);
+    }
+
+    // Download if cache is invalid or missing
+    if (masterCsv == null || detailsCsv == null || itemMasterCsv == null || itemDetailCsv == null) {
+      print('🌐 Cache invalid or missing, downloading CSVs from Drive...');
+      masterCsv = await drive.downloadCsv(await drive.fileId('SalesInvoiceMaster.csv', folderId));
+      detailsCsv = await drive.downloadCsv(await drive.fileId('SalesInvoiceDetails.csv', folderId));
+      itemMasterCsv = await drive.downloadCsv(await drive.fileId('ItemMaster.csv', folderId));
+      itemDetailCsv = await drive.downloadCsv(await drive.fileId('ItemDetail.csv', folderId));
+
+      // Save to cache
+      await _box.write(_masterCacheKey, masterCsv);
+      await _box.write(_detailsCacheKey, detailsCsv);
+      await _box.write(_itemMasterCacheKey, itemMasterCsv);
+      await _box.write(_itemDetailCacheKey, itemDetailCsv);
+      await _box.write(_lastSyncTimestampKey, DateTime.now().millisecondsSinceEpoch);
+      print('💾 CSVs downloaded and cached.');
+    } else {
+      print('⚡ Using cached CSVs to process report.');
+    }
+
+    // --- Continue with processing using the (potentially cached) CSV data ---
+    final masterRows = CsvUtils.toMaps(masterCsv!);
+    final detailRows = CsvUtils.toMaps(detailsCsv!);
+    final itemRows = CsvUtils.toMaps(itemMasterCsv!);
+    final itemDetailRows = CsvUtils.toMaps(itemDetailCsv!);
 
     final filtered = masterRows.where((r) {
       final rawDate = r['invoicedate'] ?? r['challandate'] ?? r['receiptdate'];
@@ -118,18 +163,6 @@ class ProfitReportController extends GetxController {
 
     filteredInvoices.assignAll(filtered);
     print('📄 Filtered invoices: ${filtered.length}');
-
-    final fileIdDetails = await drive.fileId('SalesInvoiceDetails.csv', folderId);
-    final csvDetails = await drive.downloadCsv(fileIdDetails);
-    final detailRows = CsvUtils.toMaps(csvDetails);
-
-    final fileIdItem = await drive.fileId('ItemMaster.csv', folderId);
-    final csvItem = await drive.downloadCsv(fileIdItem);
-    final itemRows = CsvUtils.toMaps(csvItem);
-
-    final fileIdItemDetail = await drive.fileId('ItemDetail.csv', folderId);
-    final csvItemDetail = await drive.downloadCsv(fileIdItemDetail);
-    final itemDetailRows = CsvUtils.toMaps(csvItemDetail);
 
     final Map<String, List<Map<String, dynamic>>> detailsByInvoice = {};
     for (final row in detailRows) {
@@ -167,13 +200,12 @@ class ProfitReportController extends GetxController {
       for (final d in matchingLines) {
         final itemCode = d['itemcode']?.toString().trim().toUpperCase();
         final batchNo = d['batchno']?.toString().trim().toUpperCase() ?? '';
-        // Normalize sales packing from SalesInvoiceDetails.csv
         final salesPacking = _normalizePacking(d['packing']!.toString());
 
         final salesDetailQty = num.tryParse('${d['qty']}') ?? 0;
         final salesDetailPrice = double.tryParse('${d['CGSTTaxableAmt']}') ?? 0.0;
 
-        log("DEBUG: SalesInvoiceDetails item: $itemCode - Sales Packing (Normalized): $salesPacking");
+        // log("DEBUG: SalesInvoiceDetails item: $itemCode - Sales Packing (Normalized): $salesPacking");
 
         if (salesDetailQty <= 0 || itemCode == null || itemCode.isEmpty) continue;
 
@@ -181,7 +213,7 @@ class ProfitReportController extends GetxController {
         final itemName = item?['itemname']?.toString().trim() ?? itemCode;
 
         final lookupKey = '${itemCode}_${batchNo}';
-        log("🔍 Trying lookupKey (ItemCode_BatchNo): $lookupKey with Sales Packing (Normalized): $salesPacking");
+        // log("🔍 Trying lookupKey (ItemCode_BatchNo): $lookupKey with Sales Packing (Normalized): $salesPacking");
 
         Map<String, dynamic>? matchingDetail;
 
@@ -197,9 +229,9 @@ class ProfitReportController extends GetxController {
                   (detail['BatchNo']?.toString().trim().toUpperCase() == '..' ||
                       detail['BatchNo']?.toString().trim().isEmpty == true)
           ).toList();
-          if (potentialMatches.isNotEmpty) {
-            log("✅ Fallback matches by ItemCode with empty/placeholder BatchNo found for: $lookupKey (Count: ${potentialMatches.length})");
-          }
+          // if (potentialMatches.isNotEmpty) {
+          //   log("✅ Fallback matches by ItemCode with empty/placeholder BatchNo found for: $lookupKey (Count: ${potentialMatches.length})");
+          // }
         }
 
         if (potentialMatches.isNotEmpty) {
@@ -207,33 +239,30 @@ class ProfitReportController extends GetxController {
                   (detail) {
                 final itemDetailTxtPkg = detail['txt_pkg']?.toString().trim() ?? '';
                 final itemDetailCmbUnit = detail['cmb_unit']?.toString().trim() ?? '';
-                // Normalize ItemDetail packing for comparison
                 final itemDetailPacking = _normalizePacking('$itemDetailTxtPkg$itemDetailCmbUnit');
                 return itemDetailPacking == salesPacking;
               }
           );
         }
 
-        if (matchingDetail != null) {
-          log("✅ Exact match found for: $lookupKey with Packing (Normalized): $salesPacking");
-        } else {
-          log("❌ No match found for: $lookupKey with Packing (Normalized): $salesPacking");
-          log("🔎 Did not find an exact ItemDetail for ItemCode: $itemCode, BatchNo: $batchNo, Sales Packing (Normalized): $salesPacking");
-          if (potentialMatches.isNotEmpty) {
-            log("   Available ItemDetail packings (Normalized) for $lookupKey:");
-            for (var detail in potentialMatches) {
-              final txtPkg = detail['txt_pkg']?.toString().trim() ?? '';
-              final cmbUnit = detail['cmb_unit']?.toString().trim() ?? '';
-              log("     - ${_normalizePacking('$txtPkg$cmbUnit')}");
-            }
-          }
-        }
+        // if (matchingDetail != null) {
+        //   log("✅ Exact match found for: $lookupKey with Packing (Normalized): $salesPacking");
+        // } else {
+        //   log("❌ No match found for: $lookupKey with Packing (Normalized): $salesPacking");
+        //   log("🔎 Did not find an exact ItemDetail for ItemCode: $itemCode, BatchNo: $batchNo, Sales Packing (Normalized): $salesPacking");
+        //   if (potentialMatches.isNotEmpty) {
+        //     log("   Available ItemDetail packings (Normalized) for $lookupKey:");
+        //     for (var detail in potentialMatches) {
+        //       final txtPkg = detail['txt_pkg']?.toString().trim() ?? '';
+        //       final cmbUnit = detail['cmb_unit']?.toString().trim() ?? '';
+        //       log("     - ${_normalizePacking('$txtPkg$cmbUnit')}");
+        //     }
+        //   }
+        // }
 
-        // Get packing from the *found* matchingDetail from ItemDetail.csv
-        // (Use the original values from matchingDetail for storage, not normalized ones)
         final itemDetailTxtPkg = matchingDetail?['txt_pkg']?.toString().trim().toUpperCase() ?? '';
         final itemDetailCmbUnit = matchingDetail?['cmb_unit']?.toString().trim().toUpperCase() ?? '';
-        final calculatedPacking = '$itemDetailTxtPkg$itemDetailCmbUnit'; // This is the correct packing to use in the entry
+        final calculatedPacking = '$itemDetailTxtPkg$itemDetailCmbUnit';
 
         final purcPricePerUnit = double.tryParse('${matchingDetail?['PurchasePrice']}') ?? 0.0;
         final totalPurchase = purcPricePerUnit * salesDetailQty;
@@ -253,7 +282,7 @@ class ProfitReportController extends GetxController {
           'date': invoiceDate,
         };
 
-        log("🧾 Name: $itemName | Packing: $calculatedPacking | Qty: $salesDetailQty | Sale: $salesDetailPrice | Purchase: $totalPurchase | Profit: $profitCalculated");
+        // log("🧾 Name: $itemName | Packing: $calculatedPacking | Qty: $salesDetailQty | Sale: $salesDetailPrice | Purchase: $totalPurchase | Profit: $profitCalculated");
 
         results.add(entry);
       }

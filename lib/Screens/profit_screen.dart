@@ -16,27 +16,29 @@ class ProfitReportScreen extends StatefulWidget {
 }
 
 class _ProfitReportScreenState extends State<ProfitReportScreen> {
-  final prc = Get.find<ProfitReportController>();
+  final prc = Get.put(ProfitReportController());
 
   DateTime fromDate = DateUtils.dateOnly(DateTime.now());
   DateTime toDate = DateUtils.dateOnly(DateTime.now());
-  late TextEditingController searchController;
+  final TextEditingController searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    searchController = TextEditingController();
-    fromDate = DateUtils.dateOnly(DateTime.now());
-    toDate = DateUtils.dateOnly(DateTime.now());
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // searchController = TextEditingController();
+     fromDate = DateUtils.dateOnly(DateTime.now());
+     toDate = DateUtils.dateOnly(DateTime.now());
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //
       prc.loadProfitReport(startDate: fromDate, endDate: toDate);
-    });
+    // });
   }
 
   @override
   void dispose() {
     searchController.dispose();
-    prc.resetProfits(); // Assuming you have this method in your controller to clear totals/data
+    Get.delete<ProfitReportController>();
+    // Assuming you have this method in your controller to clear totals/data
     super.dispose();
   }
 
@@ -166,13 +168,17 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
   }
 
   Widget _buildSearchField() {
-    // The RoundedSearchField should also use theme colors internally if not already
-    // If its text/border/fill colors are hardcoded, they need to be made theme-aware.
     return RoundedSearchField(
       controller: searchController,
       text: "Search By Item Name or Bill no..",
-      onClear: searchController.clear,
-      onChanged: (_) => setState(() {}),
+      onClear: () {
+        searchController.clear();
+        prc.searchQuery.value = ''; // Update the RxString
+      },
+      onChanged: (value) {
+        prc.searchQuery.value = value; // Update the RxString, Obx will react
+        // No need for setState(() {}); here
+      },
     );
   }
 

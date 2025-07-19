@@ -7,27 +7,29 @@ import '../controllers/company_name.dart';
 import '../util/dashboard_tiles.dart.dart';
 
 import '../controllers/google_signin_controller.dart';
-import '../routes/routes.dart';                     // ⬅ route constants
+import '../routes/routes.dart'; // ⬅ route constants
 
 // Import the ThemeController
-import '../controllers/theme_controller.dart'; // <--- ADD THIS LINE
+import '../controllers/theme_controller.dart';
+
+// Import the NEW TodayProfitController
+import '../controllers/today_profit_controller.dart'; // <--- ADD THIS LINE
 
 // other feature screens that still open by widget (if any) can stay imported
-import 'stock_Screens/item_type_screen.dart';      // we’ll navigate by route now
+import 'stock_Screens/item_type_screen.dart'; // we’ll navigate by route now
 import 'stock_Screens/item_list_screen.dart';
 import 'customer_ledger_screen.dart';
 
 import 'profit_screen.dart';
 import 'transactions_screen.dart';
-import 'sales_screen.dart';                        // only for Grid preview icon
+import 'sales_screen.dart'; // only for Grid preview icon
 
-// Import the ProfitReportController
-import '../controllers/profit_report_controller.dart';
+// Remove import for ProfitReportController if not directly used here
+// import '../controllers/profit_report_controller.dart'; // <--- REMOVE OR COMMENT OUT THIS LINE
 
 
 class HomeScreen extends StatelessWidget {
   HomeScreen({super.key});
-
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -85,18 +87,19 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = Get.find<GoogleSignInController>();
-    final profitController = Get.find<ProfitReportController>();
+    // Inject the TodayProfitController specifically for the home screen
+    final todayProfitController = Get.put(TodayProfitController()); // <--- USE NEW CONTROLLER
     final themeController = Get.find<ThemeController>(); // <--- GET THE THEME CONTROLLER
 
-    // Calculate today's date once in build for use
-    final today = DateTime.now();
-    final startDate = DateTime(today.year, today.month, today.day);
-    final endDate = DateTime(today.year, today.month, today.day);
+    // No need for these if using TodayProfitController directly in Obx
+    // final today = DateTime.now();
+    // final startDate = DateTime(today.year, today.month, today.day);
+    // final endDate = DateTime(today.year, today.month, today.day);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // This ensures profit data for today is loaded when the screen is first built
-      profitController.loadProfitReport(startDate: startDate, endDate: endDate);
-    });
+    // Remove this, as TodayProfitController handles its own loading on init/refresh
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   profitController.loadProfitReport(startDate: startDate, endDate: endDate);
+    // });
 
     return Scaffold(
       key: _scaffoldKey,
@@ -114,7 +117,7 @@ class HomeScreen extends StatelessWidget {
                       fit: BoxFit.cover,
                     ),
                   ),
-                  child: Row(
+                  child: const Row( // Added const here
                     children: [
                       // Using fixed colors for elements on a background image for contrast
                       CircleAvatar(radius: 30, backgroundImage: AssetImage('assets/applogo.png')),
@@ -291,11 +294,8 @@ class HomeScreen extends StatelessWidget {
                               IconButton( // NEW: Refresh button
                                 icon: const Icon(Icons.refresh, color: Colors.white), // Keep white for contrast
                                 onPressed: () {
-                                  // Call loadProfitReport with today's date
-                                  profitController.loadProfitReport(
-                                    startDate: startDate, // Use the calculated startDate
-                                    endDate: endDate,     // Use the calculated endDate
-                                  );
+                                  // Call loadTodayProfit from the new controller
+                                  todayProfitController.loadTodayProfit();
                                 },
                                 tooltip: "Refresh Today's Profit",
                               ),
@@ -306,14 +306,14 @@ class HomeScreen extends StatelessWidget {
                       ),
 
                       Obx(() {
-                        if (profitController.isLoading.value) {
+                        if (todayProfitController.isLoadingTodayProfit.value) { // Use new controller's loading state
                           return LinearProgressIndicator(
                             color: Theme.of(context).colorScheme.onPrimary, // Use theme color
                             backgroundColor: Theme.of(context).primaryColor, // Use theme color
                           );
                         }
                         return Text(
-                          '₹ ${profitController.totalProfit.value.toStringAsFixed(2)}',
+                          '₹ ${todayProfitController.todayTotalProfit.value.toStringAsFixed(2)}', // Use new controller's profit
                           style: const TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
