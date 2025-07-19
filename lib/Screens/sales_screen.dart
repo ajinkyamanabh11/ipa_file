@@ -16,7 +16,7 @@ class SalesScreen extends StatefulWidget {
   State<SalesScreen> createState() => _SalesScreenState();
 }
 
-class _SalesScreenState extends State<SalesScreen> {
+class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStateMixin {
   // ─── controllers & state ──────────────────────────────────────
   final sc = Get.find<SalesController>();
   final nameCtrl = TextEditingController();
@@ -29,10 +29,58 @@ class _SalesScreenState extends State<SalesScreen> {
   bool showCash = true; // Default to showing cash sales
   bool showCredit = false;
 
+  // Animation controller for content fade/slide
+  // Changed to nullable to defensively handle potential late initialization issues
+  AnimationController? _animationController;
+  Animation<double>? _fadeAnimation;
+  Animation<Offset>? _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController!, // Assert non-null after initialization
+        curve: Curves.easeIn,
+      ),
+    );
+    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(
+      CurvedAnimation(
+        parent: _animationController!, // Assert non-null after initialization
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    // Trigger animation when data is loaded
+    sc.isLoading.listen((isLoading) {
+      if (_animationController != null) { // Add null check
+        if (!isLoading && sc.error.value == null) {
+          _animationController!.forward(from: 0.0);
+        } else if (isLoading) {
+          _animationController!.reset(); // Reset when loading starts
+        }
+      }
+    });
+
+    // Manually trigger animation once initially if data is already loaded (e.g., from cache)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_animationController != null) { // Add null check
+        if (!sc.isLoading.value && sc.error.value == null) {
+          _animationController!.forward(from: 0.0);
+        }
+      }
+    });
+  }
+
   @override
   void dispose() {
     nameCtrl.dispose();
     billCtrl.dispose();
+    _animationController?.dispose(); // Use null-safe dispose
     super.dispose();
   }
 
@@ -68,7 +116,11 @@ class _SalesScreenState extends State<SalesScreen> {
         children: [
           RefreshIndicator(
             color: primaryColor, // Use theme primary color for refresh indicator
-            onRefresh: () async => sc.fetchSales(),
+            onRefresh: () async {
+              _animationController?.reset(); // Null-safe reset
+              await sc.fetchSales();
+              // Animation will be triggered by the isLoading listener
+            },
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Obx(() {
@@ -85,6 +137,13 @@ class _SalesScreenState extends State<SalesScreen> {
                   );
                 }
 
+                // Add null check here before using animations
+                if (_fadeAnimation == null || _slideAnimation == null) {
+                  // Fallback: Return a SizedBox.shrink() or a simple loading indicator
+                  // if animations are not yet initialized (should not happen with late, but for robustness)
+                  return const Center(child: CircularProgressIndicator());
+                }
+
                 final data = _filtered();
                 final cashRows = data
                     .where((m) => m['PaymentMode'].toString().toLowerCase() == 'cash')
@@ -96,48 +155,79 @@ class _SalesScreenState extends State<SalesScreen> {
                 final totCash = _sum(cashRows);
                 final totCredit = _sum(creRows);
 
-                return ListView(
-                  padding: const EdgeInsets.only(bottom: 100),
-                  children: [
-                    _filters(context),
-                    const SizedBox(height: 8),
-                    Row(
+                return FadeTransition(
+                  opacity: _fadeAnimation!, // Assert non-null
+                  child: SlideTransition(
+                    position: _slideAnimation!, // Assert non-null
+                    child: ListView(
+                      padding: const EdgeInsets.only(bottom: 100),
                       children: [
-                        Expanded(
-                          child: _totBtn(
-                            'Cash Sale',
-                            totCash,
-                            showCash,
-                                () {
-                              setState(() {
-                                showCash = !showCash;
-                                showCredit = false; // Ensure only one is active at a time
-                              });
-                            },
-                            context, // Pass context
-                          ),
+                        _filters(context),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _totBtn(
+                                'Cash Sale',
+                                totCash,
+                                showCash,
+                                    () {
+                                  setState(() {
+                                    showCash = !showCash;
+                                    showCredit = false; // Ensure only one is active at a time
+                                    _animationController?.forward(from: 0.0); // Animate table change
+                                  });
+                                },
+                                context, // Pass context
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _totBtn(
+                                'Credit Sale',
+                                totCredit,
+                                showCredit,
+                                    () {
+                                  setState(() {
+                                    showCredit = !showCredit;
+                                    showCash = false; // Ensure only one is active at a time
+                                    _animationController?.forward(from: 0.0); // Animate table change
+                                  });
+                                },
+                                context, // Pass context
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _totBtn(
-                            'Credit Sale',
-                            totCredit,
-                            showCredit,
-                                () {
-                              setState(() {
-                                showCredit = !showCredit;
-                                showCash = false; // Ensure only one is active at a time
-                              });
-                            },
-                            context, // Pass context
+                        const SizedBox(height: 8),
+                        // Use AnimatedSwitcher for smooth transition between tables
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          transitionBuilder: (Widget child, Animation<double> animation) {
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0, 0.05),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: showCash
+                              ? KeyedSubtree(
+                            key: const ValueKey('cashTable'), // Unique key for AnimatedSwitcher
+                            child: _paginatedTable(cashRows, context),
+                          )
+                              : KeyedSubtree(
+                            key: const ValueKey('creditTable'), // Unique key for AnimatedSwitcher
+                            child: _paginatedTable(creRows, context),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    if (showCash) _paginatedTable(cashRows, context), // Pass context
-                    if (showCredit) _paginatedTable(creRows, context), // Pass context
-                  ],
+                  ),
                 );
               }),
             ),
@@ -184,13 +274,19 @@ class _SalesScreenState extends State<SalesScreen> {
                         color: onSurfaceColor, // Text color on card background
                       ),
                     ),
-                    Text(
-                      '₹${grandTotal.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: primaryColor, // Use theme primary color for highlight
-                      ),
+                    TweenAnimationBuilder<double>(
+                      tween: Tween<double>(begin: 0, end: grandTotal),
+                      duration: const Duration(milliseconds: 500),
+                      builder: (context, value, child) {
+                        return Text(
+                          '₹${value.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: primaryColor, // Use theme primary color for highlight
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -240,7 +336,10 @@ class _SalesScreenState extends State<SalesScreen> {
                   );
                 },
               );
-              if (d != null) setState(() => picked = DateUtils.dateOnly(d));
+              if (d != null) {
+                setState(() => picked = DateUtils.dateOnly(d));
+                _animationController?.forward(from: 0.0); // Animate table change
+              }
             },
           ),
           Text(
@@ -253,7 +352,10 @@ class _SalesScreenState extends State<SalesScreen> {
       IconButton(
         tooltip: asc ? 'Sort Asc' : 'Sort Desc',
         icon: Icon(asc ? Icons.arrow_upward : Icons.arrow_downward, color: Theme.of(ctx).iconTheme.color), // Use theme icon color
-        onPressed: () => setState(() => asc = !asc),
+        onPressed: () {
+          setState(() => asc = !asc);
+          _animationController?.forward(from: 0.0); // Animate table change
+        },
       ),
     ],
   );
@@ -277,7 +379,10 @@ class _SalesScreenState extends State<SalesScreen> {
         hintStyle: TextStyle(color: Theme.of(ctx).colorScheme.onSurface.withOpacity(0.5)),
       ),
       style: TextStyle(color: Theme.of(ctx).colorScheme.onSurface), // Input text color
-      onChanged: (_) => setState(() {}),
+      onChanged: (_) {
+        setState(() {});
+        _animationController?.forward(from: 0.0); // Animate table change
+      },
     ),
   );
 
@@ -289,11 +394,28 @@ class _SalesScreenState extends State<SalesScreen> {
           // Use theme-aware foreground colors
           foregroundColor: active ? Theme.of(ctx).colorScheme.onPrimary : Theme.of(ctx).colorScheme.onSurface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          // Add a slight elevation animation
+          elevation: active ? 8.0 : 2.0,
+          animationDuration: const Duration(milliseconds: 200),
         ),
         onPressed: tap,
-        child: Text(
-          '$label: ₹${amt.toStringAsFixed(2)}',
-          style: const TextStyle(fontWeight: FontWeight.w600), // Text color is handled by foregroundColor
+        child: Column(
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0, end: amt),
+              duration: const Duration(milliseconds: 400),
+              builder: (context, value, child) {
+                return Text(
+                  '₹${value.toStringAsFixed(2)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                );
+              },
+            ),
+          ],
         ),
       );
 
@@ -302,15 +424,20 @@ class _SalesScreenState extends State<SalesScreen> {
   Widget _paginatedTable(List<Map<String, dynamic>> rows, BuildContext ctx) {
     if (rows.isEmpty) {
       return Center(
-        child: Text(
-          'No records.',
-          style: TextStyle(color: Theme.of(ctx).colorScheme.onSurface), // Theme-aware text color
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            'No records for selected filters.',
+            style: TextStyle(color: Theme.of(ctx).colorScheme.onSurface.withOpacity(0.7)), // Theme-aware text color
+          ),
         ),
       );
     }
 
     final totalRows = rows.length + 1; // +1 summary row
-    final rowsPer = totalRows < 10 ? totalRows : 10;
+    // Ensure rowsPerPage is at least 1 and not more than totalRows or a sensible max
+    final rowsPer = totalRows < 10 ? (totalRows > 0 ? totalRows : 1) : 10;
+
 
     // Get theme colors for the table
     final Color onSurfaceColor = Theme.of(ctx).colorScheme.onSurface;
@@ -322,7 +449,7 @@ class _SalesScreenState extends State<SalesScreen> {
       headingRowColor: MaterialStateProperty.all(surfaceVariantColor),
       columnSpacing: 28,
       rowsPerPage: rowsPer,
-      availableRowsPerPage: totalRows < 10 ? [rowsPer] : const [10],
+      availableRowsPerPage: totalRows < 10 ? [rowsPer] : const [10, 25, 50], // Provide more options
       showFirstLastButtons: true,
       columns: [
         // Ensure column labels also respect text theme
@@ -381,7 +508,7 @@ class _SalesSource extends DataTableSource {
       index: index,
       // Use theme-aware colors for alternating row backgrounds
       color: MaterialStateProperty.all(
-          index.isEven ? surfaceColor : surfaceVariantColor),
+          index.isEven ? surfaceColor : surfaceVariantColor.withOpacity(0.7)), // Slightly less opaque for odd rows
       cells: [
         DataCell(Text('${index + 1}', style: TextStyle(color: onSurfaceColor))), // Theme-aware text color
         DataCell(Text(m['AccountName'] ?? '', style: TextStyle(color: onSurfaceColor))), // Theme-aware text color

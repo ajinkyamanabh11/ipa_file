@@ -1,3 +1,5 @@
+// main.dart
+import 'package:demo/routes/app_page_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
@@ -10,6 +12,8 @@ import 'controllers/theme_controller.dart';
 import 'controllers/google_signin_controller.dart';
 import 'bindings/initial_bindings.dart';
 import 'routes/routes.dart';
+ // Ensure this is imported for getPages
+
 // ── controllers (only those that still need per‑page binding) ──
 import 'controllers/sales_controller.dart';
 // ── screens ───────────────────────────────────────────────────
@@ -21,10 +25,12 @@ import 'screens/sales_screen.dart';
 import 'screens/customer_ledger_screen.dart';
 import 'screens/debtors_screen.dart';
 import 'screens/creditors_screen.dart';
-import 'screens/profit_screen.dart'; // Ensure this is imported correctly
+import 'screens/profit_screen.dart';
+
+
 /// Route‑aware animations
 final RouteObserver<ModalRoute<void>> routeObserver =
-    RouteObserver<ModalRoute<void>>();
+RouteObserver<ModalRoute<void>>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,9 +52,11 @@ Future<void> main() async {
   Get.find<ThemeController>().initTheme();
   runApp(MyApp(isLoggedIn: account != null));
 }
+
 class MyApp extends StatelessWidget {
   final bool isLoggedIn;
   const MyApp({super.key, required this.isLoggedIn});
+
   @override
   Widget build(BuildContext context) {
     Intl.defaultLocale = 'en_IN';
@@ -59,6 +67,10 @@ class MyApp extends StatelessWidget {
       title: "Kisan Krushi",
       navigatorObservers: [routeObserver],
       initialRoute: isLoggedIn ? Routes.home : Routes.login,
+      getPages: AppPages.routes, // Using AppPages.routes from app_pages.dart
+      // You can also pass the list directly if AppPages.routes is not used elsewhere.
+      // However, it's a good practice to centralize route definitions.
+      /*
       getPages: [
         // ───── auth & home ──────────────────────────────────────
         GetPage(name: Routes.login, page: () => const LoginScreen()),
@@ -82,21 +94,13 @@ class MyApp extends StatelessWidget {
         GetPage(name: Routes.debtors, page: () => DebtorsScreen()),
         GetPage(name: Routes.creditors, page: () => const CreditorsScreen()),
         GetPage(name: Routes.profit, page: () => ProfitReportScreen()),
+        GetPage(name: Routes.profile, page: () => const ProfileScreen()),
       ],
+      */
       // Configure your themes here
       theme: AppThemes.lightTheme, // Your defined light theme
       darkTheme: AppThemes.darkTheme, // Your defined dark theme
-      // Set the themeMode directly using the reactive property from your controller.
-      // GetMaterialApp is already smart enough to react to changes in themeController.theme.
       themeMode: themeController.theme,
-      // REMOVE THE BUILDER WITH Obx THAT CALLS Get.changeThemeMode
-      // This was the cause of the error.
-      // builder: (context, child) {
-      //   return Obx(() {
-      //     Get.changeThemeMode(themeController.isDarkMode.value ? ThemeMode.dark : ThemeMode.light);
-      //     return child!;
-      //   });
-      // },
     );
   }
 }

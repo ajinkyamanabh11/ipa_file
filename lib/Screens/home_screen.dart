@@ -1,7 +1,7 @@
 // lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart'; // Import for DateFormat
+import 'package:intl/intl.dart';
 
 import '../controllers/company_name.dart';
 import '../util/dashboard_tiles.dart.dart';
@@ -13,338 +13,524 @@ import '../routes/routes.dart'; // ⬅ route constants
 import '../controllers/theme_controller.dart';
 
 // Import the NEW TodayProfitController
-import '../controllers/today_profit_controller.dart'; // <--- ADD THIS LINE
+import '../controllers/today_profit_controller.dart';
 
 // other feature screens that still open by widget (if any) can stay imported
-import 'stock_Screens/item_type_screen.dart'; // we’ll navigate by route now
+import 'stock_Screens/item_type_screen.dart';
 import 'stock_Screens/item_list_screen.dart';
 import 'customer_ledger_screen.dart';
 
 import 'profit_screen.dart';
 import 'transactions_screen.dart';
-import 'sales_screen.dart'; // only for Grid preview icon
-
-// Remove import for ProfitReportController if not directly used here
-// import '../controllers/profit_report_controller.dart'; // <--- REMOVE OR COMMENT OUT THIS LINE
+import 'sales_screen.dart';
 
 
-class HomeScreen extends StatelessWidget {
+// ── HomeScreen: Converted to StatefulWidget for Animations ──────────────────
+class HomeScreen extends StatefulWidget {
   HomeScreen({super.key});
 
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final GoogleSignInController googleSignInController = Get.find<GoogleSignInController>();
+
+  // Animation controllers for the main screen content
+  late AnimationController _animationController;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _fadeAnimation;
+
+  // NEW: Animation controllers for the Drawer content
+  late AnimationController _drawerAnimationController;
+  late Animation<Offset> _drawerSlideAnimation;
+  late Animation<double> _drawerFadeAnimation;
+
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize main screen animation controller
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200), // Overall animation duration
+    );
+
+    // Define main screen slide animation
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.2), // Starts 20% below its final position
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutCubic, // A smooth accelerating then decelerating curve
+    ));
+
+    // Define main screen fade animation
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeIn, // A gentle fade-in curve
+    ));
+
+    // Start the main screen animation when the screen loads
+    _animationController.forward();
+
+    // NEW: Initialize Drawer animation controller
+    _drawerAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800), // Duration for drawer content animation
+    );
+    _drawerSlideAnimation = Tween<Offset>(
+      begin: const Offset(-0.2, 0), // Starts slightly off-screen to the left
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _drawerAnimationController,
+      curve: Curves.easeOutCubic,
+    ));
+    _drawerFadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _drawerAnimationController,
+      curve: Curves.easeIn,
+    ));
+
+    // NEW: Trigger the drawer content animation when HomeScreen is initialized.
+    // This provides a consistent "pop-in" effect for the drawer contents
+    // whenever the drawer is presented during the app's lifecycle.
+    _drawerAnimationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose(); // Dispose of the main screen controller
+    _drawerAnimationController.dispose(); // NEW: Dispose of the drawer controller
+    super.dispose();
+  }
+
   /// Navigate via **named route** so bindings fire
   void navigateTo(String route) => Get.toNamed(route);
 
-  // Updated to use theme colors for consistency
+  // _buildGridItem: Now takes an index for staggered animations
   Widget _buildGridItem(
       String label,
       IconData icon,
       VoidCallback onTap,
-      BuildContext context, // Pass BuildContext to access theme
+      BuildContext context,
+      int index, // Added index for staggered animation
       ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Card(
-        // Use theme's card color
-        color: Theme.of(context).cardColor,
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircleAvatar(
-              // Use theme's primary color for the avatar background
-              backgroundColor: Theme.of(context).primaryColor,
-              child: Icon(icon, color: Colors.white), // Icon color typically white on primary
+    // Define an animation for each grid item to appear staggered
+    final itemSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.5), // Each item slides up slightly
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Interval(
+        (0.3 + index * 0.1).clamp(0.0, 1.0), // Start after main animation begins, stagger by 0.1s
+        1.0, // Ends at the same time as overall animation
+        curve: Curves.easeOutCubic,
+      ),
+    ));
+
+    final itemFadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Interval(
+        (0.3 + index * 0.1).clamp(0.0, 1.0), // Same staggered timing as slide
+        1.0,
+        curve: Curves.easeIn,
+      ),
+    ));
+
+    return FadeTransition(
+      opacity: itemFadeAnimation, // Fade in each item
+      child: SlideTransition(
+        position: itemSlideAnimation, // Slide up each item
+        child: GestureDetector(
+          onTap: onTap,
+          child: Card(
+            color: Theme.of(context).cardColor,
+            elevation: 4,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircleAvatar(
+                  backgroundColor: Theme.of(context).primaryColor,
+                  child: Icon(icon, color: Colors.white),
+                ),
+                const SizedBox(height: 10),
+                Text(label,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+              ],
             ),
-            const SizedBox(height: 10),
-            Text(label,
-                textAlign: TextAlign.center,
-                // Use theme's text style for consistency
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  // Updated to use theme colors and text styles for consistency
-  Widget _buildDrawerItem(IconData icon, String title, VoidCallback onTap, BuildContext context) {
-    return ListTile(
-      // Use theme's icon color
-      leading: Icon(icon, color: Theme.of(context).iconTheme.color),
-      title: Text(title,
-          // Use theme's text style
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
-      onTap: () {
-        Get.back();
-        onTap();
-      },
+  // Updated _buildDrawerItem to include staggered animation
+  Widget _buildDrawerItem(IconData icon, String title, VoidCallback onTap, BuildContext context, int index) {
+    // NEW: Staggered animation for each drawer item
+    final itemSlideAnimation = Tween<Offset>(
+      begin: const Offset(-0.1, 0), // Slide slightly from left
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _drawerAnimationController,
+      curve: Interval(
+        (0.0 + index * 0.08).clamp(0.0, 1.0), // Stagger start time
+        1.0,
+        curve: Curves.easeOutCubic,
+      ),
+    ));
+
+    final itemFadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _drawerAnimationController,
+      curve: Interval(
+        (0.0 + index * 0.08).clamp(0.0, 1.0), // Stagger start time
+        1.0,
+        curve: Curves.easeIn,
+      ),
+    ));
+
+    return FadeTransition(
+      opacity: itemFadeAnimation,
+      child: SlideTransition(
+        position: itemSlideAnimation,
+        child: ListTile(
+          leading: Icon(icon, color: Theme.of(context).iconTheme.color),
+          title: Text(title,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+          onTap: () {
+            // Ensure drawer closes before navigation
+            if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+              _scaffoldKey.currentState?.openEndDrawer(); // Close drawer
+            }
+            // Add a small delay for the animation to play out before navigation
+            Future.delayed(const Duration(milliseconds: 200), () {
+              onTap();
+            });
+          },
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final controller = Get.find<GoogleSignInController>();
-    // Inject the TodayProfitController specifically for the home screen
-    final todayProfitController = Get.put(TodayProfitController()); // <--- USE NEW CONTROLLER
-    final themeController = Get.find<ThemeController>(); // <--- GET THE THEME CONTROLLER
-
-    // No need for these if using TodayProfitController directly in Obx
-    // final today = DateTime.now();
-    // final startDate = DateTime(today.year, today.month, today.day);
-    // final endDate = DateTime(today.year, today.month, today.day);
-
-    // Remove this, as TodayProfitController handles its own loading on init/refresh
-    // WidgetsBinding.instance.addPostFrameCallback((_) {
-    //   profitController.loadProfitReport(startDate: startDate, endDate: endDate);
-    // });
+    final todayProfitController = Get.put(TodayProfitController());
+    final themeController = Get.find<ThemeController>();
 
     return Scaffold(
       key: _scaffoldKey,
       drawer: Drawer(
-        // The drawer's background will automatically adapt based on scaffoldBackgroundColor
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              ClipPath(
-                clipper: WaveClipper(),
-                child: DrawerHeader(
-                  decoration: const BoxDecoration(
-                    image: DecorationImage(
-                      image: AssetImage("assets/appbarimg.png"),
-                      fit: BoxFit.cover,
+        // NEW: Wrap the entire drawer content with animation widgets
+        child: FadeTransition(
+          opacity: _drawerFadeAnimation,
+          child: SlideTransition(
+            position: _drawerSlideAnimation,
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  ClipPath(
+                    clipper: WaveClipper(),
+                    child: DrawerHeader(
+                      decoration: const BoxDecoration(
+                        image: DecorationImage(
+                          image: AssetImage("assets/appbarimg.png"),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      child:  Row(
+                        children: [
+                          Obx(() {
+                            final user = googleSignInController.user.value;
+                            final photoUrl = user?.photoUrl; // Corrected to photoUrl (lowercase 'u')
+
+                            // Fix for the TypeError: Use child property for Icon
+                            if (photoUrl != null && photoUrl.isNotEmpty) {
+                              return CircleAvatar(
+                                radius: 30,
+                                backgroundImage: NetworkImage(photoUrl), // Use NetworkImage
+                              );
+                            } else {
+                              return CircleAvatar(
+                                radius: 30,
+                                backgroundColor: Theme.of(context).primaryColor, // Provide a background color
+                                child: Icon(Icons.person, size: 30, color: Theme.of(context).colorScheme.onPrimary), // Use Icon as a child
+                              );
+                            }
+                          }),
+                          SizedBox(width: 16),
+                          Obx(() {
+                            final user = googleSignInController.user.value;
+                            String displayText = "Kisan Krushi Menu";
+
+                            if (user != null) {
+                              final userName = user.displayName ?? user.email;
+                              if (userName != null && userName.isNotEmpty) {
+                                displayText = "Hello $userName";
+                              } else {
+                                displayText = "Hello User";
+                              }
+                            }
+
+                            return Expanded(
+                              child: Text(
+                                displayText,
+                                style: TextStyle(fontSize: 20, color: Colors.white),
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
                     ),
                   ),
-                  child:  Row( // Added const here
-                    children: [
-                      // Using fixed colors for elements on a background image for contrast
-                      CircleAvatar(radius: 30, backgroundImage: AssetImage('assets/applogo.png')),
-                      SizedBox(width: 16),
-                      Obx(() {
-                        // CORRECTED: Use 'user.value' instead of 'currentUser.value'
-                        final user = googleSignInController.user.value;
-                        String displayText = "Kisan Krushi Menu"; // Default text if no user or data
+                  // Map existing drawer tiles, passing context and index for staggered animation
+                  ...drawerTiles.asMap().entries.map((entry) { // Use asMap().entries to get index
+                    final index = entry.key;
+                    final t = entry.value;
+                    if (t.label == 'Dashboard') {
+                      return _buildDrawerItem(
+                          dashIcon(t.label), t.label, () {}, context, index);
+                    }
+                    if (t.label == 'Profile') { // <-- FIND THIS BLOCK
+                      return _buildDrawerItem(
+                          dashIcon(t.label),
+                          t.label,
+                              () => navigateTo(Routes.profile), // <-- CHANGE THIS LINE
+                          context,
+                          index);
+                    }
+                    return _buildDrawerItem(
+                      dashIcon(t.label),
+                      t.label,
+                          () => t.route.isNotEmpty ? navigateTo(t.route) : {},
+                      context,
+                      index, // Pass index
+                    );
+                  }).toList(),
 
-                        if (user != null) {
-                          // Prefer displayName, fall back to email if displayName is null
-                          final userName = user.displayName ?? user.email;
-                          if (userName != null && userName.isNotEmpty) {
-                            displayText = "Hello $userName";
-                          } else {
-                            displayText = "Hello User"; // Generic fallback if display name and email are empty
-                          }
-                        }
-
-                        return Text(
-                          displayText,
-                          style: TextStyle(fontSize: 20, color: Colors.white),
-                        );
-                      }),
-                    ],
-                  ),
-                ),
+                  Obx(() => SwitchListTile(
+                    title: Text(
+                      themeController.isDarkMode.value ? "Dark Mode" : "Light Mode",
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    secondary: Icon(
+                      themeController.isDarkMode.value ? Icons.dark_mode : Icons.light_mode,
+                      color: Theme.of(context).iconTheme.color,
+                    ),
+                    value: themeController.isDarkMode.value,
+                    onChanged: (bool value) {
+                      themeController.toggleTheme();
+                    },
+                    activeColor: Theme.of(context).primaryColor,
+                  )),
+                  const Divider(),
+                  // Pass index for the logout item as well
+                  _buildDrawerItem(Icons.logout, "Logout", () async {
+                    await controller.logout();
+                    Get.offAllNamed(Routes.login);
+                  }, context, drawerTiles.length), // Assign an index after all other tiles
+                ],
               ),
-              // Map existing drawer tiles, passing context
-              ...drawerTiles.map((t) {
-                if (t.label == 'Dashboard') {
-                  return _buildDrawerItem(
-                      dashIcon(t.label), t.label, () {}, context); // Pass context
-                }
-                if (t.label == 'Profile') {
-                  return _buildDrawerItem(
-                      dashIcon(t.label), t.label, () {}, context); // Pass context
-                }
-                return _buildDrawerItem(
-                  dashIcon(t.label),
-                  t.label,
-                      () => t.route.isNotEmpty ? navigateTo(t.route) : {},
-                  context, // Pass context
-                );
-              }).toList(),
-
-              // <--- ADD THE THEME TOGGLE HERE ---
-              Obx(() => SwitchListTile(
-                title: Text(
-                  themeController.isDarkMode.value ? "Dark Mode" : "Light Mode",
-                  style: Theme.of(context).textTheme.bodyMedium, // Use theme text style
-                ),
-                secondary: Icon(
-                  themeController.isDarkMode.value ? Icons.dark_mode : Icons.light_mode,
-                  color: Theme.of(context).iconTheme.color, // Use theme icon color
-                ),
-                value: themeController.isDarkMode.value,
-                onChanged: (bool value) {
-                  themeController.toggleTheme(); // Call the toggle method
-                },
-                activeColor: Theme.of(context).primaryColor, // Use theme's primary color
-              )),
-              // --- END THEME TOGGLE ---
-
-              const Divider(), // Divider color will adapt via theme.dividerColor
-              _buildDrawerItem(Icons.logout, "Logout", () async {
-                await controller.logout();
-                Get.offAllNamed(Routes.login);
-              }, context), // Pass context
-            ],
+            ),
           ),
         ),
       ),
       body: Stack(
-        children: [
-          // wave image background (existing)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ClipPath(
-              clipper: WaveClipper(),
-              child: Container(
-                height: 310,
-                decoration: const BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage('assets/appbarimg.png'),
-                    fit: BoxFit.cover,
+          children: [
+            // Wave image background (remains static at the bottom of the stack)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: ClipPath(
+                clipper: WaveClipper(),
+                child: Container(
+                  height: 310,
+                  decoration: const BoxDecoration(
+                    image: DecorationImage(
+                      image: AssetImage('assets/appbarimg.png'),
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          // top bar (existing)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.menu, color: Colors.white), // Keep white for contrast on image
-                      onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-                    ),
-                    const Spacer(),
-                    Expanded(
-                      flex: 3,
-                      child: FutureBuilder<String>(
-                        future: fetchCompanyNameFromDrive(),
-                        builder: (context, snapshot) {
-                          final company = snapshot.data ?? 'Loading ...';
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+            // Animated content: top bar, profit card, and grid
+            Positioned.fill( // Allows the content to fill the available space
+              child: FadeTransition( // Overall fade-in for the content
+                opacity: _fadeAnimation,
+                child: SlideTransition( // Overall slide-up for the content
+                  position: _slideAnimation,
+                  child: Column( // Arrange content vertically
+                    children: [
+                      // Top bar
+                      SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                company,
-                                style: const TextStyle(
-                                  color: Colors.white, // Keep white for contrast on image
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                textAlign: TextAlign.end,
-                                softWrap: true,
+                              IconButton(
+                                icon: const Icon(Icons.menu, color: Colors.white), // Keep white for contrast on image
+                                onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                               ),
-                              const Text(
-                                "By Manabh",
-                                style: TextStyle(color: Colors.white, fontSize: 14), // Keep white for contrast on image
-                                textAlign: TextAlign.end,
+                              const Spacer(),
+                              Expanded(
+                                flex: 3,
+                                child: FutureBuilder<String>(
+                                  future: fetchCompanyNameFromDrive(),
+                                  builder: (context, snapshot) {
+                                    final company = snapshot.data ?? 'Loading ...';
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          company,
+                                          style: const TextStyle(
+                                            color: Colors.white, // Keep white for contrast on image
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          textAlign: TextAlign.end,
+                                          softWrap: true,
+                                        ),
+                                        const Text(
+                                          "By Manabh",
+                                          style: TextStyle(color: Colors.white, fontSize: 14), // Keep white for contrast on image
+                                          textAlign: TextAlign.end,
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
                               ),
                             ],
-                          );
-                        },
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // Todays Profit Card - Now with appbarimg.png background
-          Positioned(
-            top: 140,
-            left: 20,
-            right: 20,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: [
-                  BoxShadow(
-                    // Box shadow color can be theme-dependent, but black54 is often good for both.
-                    color: Colors.black54,
-                    spreadRadius: 1,
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-                // NEW: Use DecorationImage for the background
-                image: const DecorationImage(
-                  image: AssetImage('assets/appbarimg.png'),
-                  fit: BoxFit.cover, // Ensures the image covers the card area
-                  // You might want to adjust colorFilter for better text readability
-                  // colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.4), BlendMode.darken),
-                ),
-              ),
-              child: Card(
-                color: Colors.transparent, // Keep transparent to show Container's image
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            "Today's Profit",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white, // Keep text white for contrast on image
+                      // Todays Profit Card
+                      Padding( // Use Padding instead of Positioned now that it's in a Column
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0), // Adjust top padding
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                // Box shadow color can be theme-dependent, but black54 is often good for both.
+                                color: Colors.black54,
+                                spreadRadius: 1,
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                            // NEW: Use DecorationImage for the background
+                            image: const DecorationImage(
+                              image: AssetImage('assets/appbarimg.png'),
+                              fit: BoxFit.cover, // Ensures the image covers the card area
+                              // You might want to adjust colorFilter for better text readability
+                              // colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.4), BlendMode.darken),
                             ),
                           ),
-                          // Place the refresh button next to the trending icon
-                          Row( // Wrap icon and button in another Row for alignment
-                            children: [
-                              IconButton( // NEW: Refresh button
-                                icon: const Icon(Icons.refresh, color: Colors.white), // Keep white for contrast
-                                onPressed: () {
-                                  // Call loadTodayProfit from the new controller
-                                  todayProfitController.loadTodayProfit();
-                                },
-                                tooltip: "Refresh Today's Profit",
+                          child: Card(
+                            color: Colors.transparent, // Keep transparent to show Container's image
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                            child: Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text(
+                                        "Today's Profit",
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white, // Keep text white for contrast on image
+                                        ),
+                                      ),
+                                      Row( // Wrap icon and button in another Row for alignment
+                                        children: [
+                                          IconButton( // NEW: Refresh button
+                                            icon: const Icon(Icons.refresh, color: Colors.white), // Keep white for contrast
+                                            onPressed: () {
+                                              // Call loadTodayProfit from the new controller
+                                              todayProfitController.loadTodayProfit();
+                                            },
+                                            tooltip: "Refresh Today's Profit",
+                                          ),
+                                          Icon(Icons.trending_up, color: Colors.white.withOpacity(0.8), size: 30), // Keep white for contrast
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+
+                                  Obx(() {
+                                    if (todayProfitController.isLoadingTodayProfit.value) { // Use new controller's loading state
+                                      return LinearProgressIndicator(
+                                        color: Theme.of(context).colorScheme.onPrimary, // Use theme color
+                                        backgroundColor: Theme.of(context).primaryColor, // Use theme color
+                                      );
+                                    }
+                                    return Text(
+                                      '₹ ${todayProfitController.todayTotalProfit.value.toStringAsFixed(2)}', // Use new controller's profit
+                                      style: const TextStyle(
+                                        fontSize: 32,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white, // Keep white for contrast on image
+                                      ),
+                                    );
+                                  }),
+
+                                  Text(
+                                    'As of ${DateFormat('dd-MM-yyyy').format(DateTime.now())}',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.white.withOpacity(0.8), // Keep white for contrast on image
+                                    ),
+                                  ),
+                                ],
                               ),
-                              Icon(Icons.trending_up, color: Colors.white.withOpacity(0.8), size: 30), // Keep white for contrast
-                            ],
+                            ),
                           ),
-                        ],
+                        ),
                       ),
-
-                      Obx(() {
-                        if (todayProfitController.isLoadingTodayProfit.value) { // Use new controller's loading state
-                          return LinearProgressIndicator(
-                            color: Theme.of(context).colorScheme.onPrimary, // Use theme color
-                            backgroundColor: Theme.of(context).primaryColor, // Use theme color
-                          );
-                        }
-                        return Text(
-                          '₹ ${todayProfitController.todayTotalProfit.value.toStringAsFixed(2)}', // Use new controller's profit
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white, // Keep white for contrast on image
+                      // Grid Dashboard: Now using GridView.builder for staggered animation
+                      Expanded( // Takes remaining vertical space in the Column
+                        child: GridView.builder(
+                          padding: const EdgeInsets.all(12),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 16,
                           ),
-                        );
-                      }),
-
-                      Text(
-                        'As of ${DateFormat('dd-MM-yyyy').format(DateTime.now())}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white.withOpacity(0.8), // Keep white for contrast on image
+                          itemCount: dashTiles.length,
+                          itemBuilder: (context, index) {
+                            final t = dashTiles[index];
+                            return _buildGridItem(
+                              t.label,
+                              dashIcon(t.label),
+                                  () => t.route.isNotEmpty ? navigateTo(t.route) : {},
+                              context,
+                              index, // Pass the index to the builder for staggered animation
+                            );
+                          },
                         ),
                       ),
                     ],
@@ -352,27 +538,8 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-          // grid dashboard (adjusted top padding)
-          Padding(
-            padding: const EdgeInsets.only(top: 320),
-            child: GridView.count(
-              padding: const EdgeInsets.all(12),
-              crossAxisCount: 3,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 16,
-              children: dashTiles.map((t) {
-                return _buildGridItem(
-                  t.label,
-                  dashIcon(t.label),
-                      () => t.route.isNotEmpty ? navigateTo(t.route) : {},
-                  context, // <--- PASS CONTEXT HERE
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
+          ]),
+
     );
   }
 }
