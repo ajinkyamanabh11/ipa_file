@@ -16,18 +16,12 @@ import '../controllers/theme_controller.dart';
 import '../controllers/today_profit_controller.dart';
 
 // other feature screens that still open by widget (if any) can stay imported
-import 'stock_Screens/item_type_screen.dart';
-import 'stock_Screens/item_list_screen.dart';
-import 'customer_ledger_screen.dart';
 
-import 'profit_screen.dart';
-import 'transactions_screen.dart';
-import 'sales_screen.dart';
 
 
 // ── HomeScreen: Converted to StatefulWidget for Animations ──────────────────
 class HomeScreen extends StatefulWidget {
-  HomeScreen({super.key});
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -320,7 +314,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       context,
                       index, // Pass index
                     );
-                  }).toList(),
+                  }),
 
                   Obx(() => SwitchListTile(
                     title: Text(

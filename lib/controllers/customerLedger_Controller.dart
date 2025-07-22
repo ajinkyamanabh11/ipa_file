@@ -1,4 +1,6 @@
 // lib/controllers/customer_ledger_controller.dart
+import 'dart:developer';
+
 import 'package:get/get.dart';
 
 import '../constants/paths.dart';
@@ -8,29 +10,30 @@ import '../util/csv_utils.dart';
 // typed rows
 import '../model/account_master_model.dart';
 import '../model/allaccounts_model.dart';
+import 'google_signin_controller.dart';
 
 class CustomerLedgerController extends GetxController {
-  final drive = Get.find<GoogleDriveService>();
+  final GoogleDriveService drive = Get.find<GoogleDriveService>();
+  final GoogleSignInController _googleSignInController = Get.find<GoogleSignInController>(); // Get instance
 
   // ───────────── reactive stores ─────────────
-  final accounts        = <AccountModel>[].obs;
-  final transactions    = <AllAccountsModel>[].obs;
+  final accounts = <AccountModel>[].obs;
+  final transactions = <AllAccountsModel>[].obs;
 
-  /// raw row‑maps (all headers are lower‑cased once)
-  final customerInfo    = <Map<String, dynamic>>[].obs;   // CustomerInformation.csv
-  final supplierInfo    = <Map<String, dynamic>>[].obs;   // SupplierInformation.csv
+  final customerInfo = <Map<String, dynamic>>[].obs;
+  final supplierInfo = <Map<String, dynamic>>[].obs;
 
-  final debtors   = <Map<String, dynamic>>[].obs;         // balance > 0 (Dr)
-  final creditors = <Map<String, dynamic>>[].obs;         // balance < 0 (Cr)
+  final debtors = <Map<String, dynamic>>[].obs;
+  final creditors = <Map<String, dynamic>>[].obs;
 
-  // single‑name ledger screen
-  final filtered  = <AllAccountsModel>[].obs;
-  final drTotal   = 0.0.obs;
-  final crTotal   = 0.0.obs;
+  final filtered = <AllAccountsModel>[].obs;
+  final drTotal = 0.0.obs;
+  final crTotal = 0.0.obs;
 
   // status flags
   final isLoading = false.obs;
-  final error     = RxnString();
+  final error = RxnString();
+  final requiresSignIn = false.obs; // New flag to indicate sign-in is required
 
   late final List<String> _softAgriPath;
 
@@ -39,36 +42,84 @@ class CustomerLedgerController extends GetxController {
   @override
   Future<void> onInit() async {
     super.onInit();
+    // Listen to sign-in status changes
+    _googleSignInController.user.listen((account) {
+      if (account != null) {
+        requiresSignIn(false); // User is signed in
+        _load(); // Reload data if signed in after being signed out
+      } else {
+        // If user becomes null, and we were previously loading data, it means sign-out happened
+        // or silent sign-in failed. Mark as requiring sign-in.
+        if (!isLoading.value) { // Only set if not already in a loading state trying to sign in
+          requiresSignIn(true);
+          error.value = 'Google Sign-In is required to access data.';
+          // Clear existing data when sign-out/failure occurs
+          accounts.clear();
+          transactions.clear();
+          customerInfo.clear();
+          supplierInfo.clear();
+          debtors.clear();
+          creditors.clear();
+        }
+      }
+    });
+
+    // Initialize path, but only attempt data load if user is already signed in
     _softAgriPath = await SoftAgriPath.build(drive);
-    _load();
+
+    // Initial load attempt based on current sign-in status
+    if (_googleSignInController.isSignedIn) {
+      _load();
+    } else {
+      requiresSignIn(true);
+      error.value = 'Please sign in to your Google Account to load data.';
+    }
   }
-  Future<void> refreshDebtors() async => _load(silent: true);                  // Drive path segments
 
-
-  Future<void> loadData() => _load();                     // pull‑to‑refresh
+  Future<void> refreshDebtors() async => _load(silent: true);
+  Future<void> loadData() => _load();
 
   // ───────────── loader ─────────────
-  Future<void> _load({bool silent=false}) async {
+  Future<void> _load({bool silent = false}) async {
+    if (!_googleSignInController.isSignedIn) {
+      // If not signed in, don't even try to load data
+      error.value = 'Google Sign-In is required to access data.';
+      requiresSignIn(true);
+      return;
+    }
+
     try {
-      isLoading(true);
-      if (!silent) isLoading(true);
+      if (!silent) isLoading(true); // Only show full loader if not silent refresh
       error.value = null;
+      requiresSignIn(false); // Reset sign-in required flag
 
       final parentId = await drive.folderId(_softAgriPath);
+      if (parentId == null) {
+        // This means _api() in GoogleDriveService returned null due to no auth
+        error.value = 'Google Sign-In is required to access Google Drive.';
+        requiresSignIn(true);
+        return;
+      }
 
-      // helper ── fetch + lower‑case headers
       Map<String, dynamic> _lc(Map<String, dynamic> row) => {
         for (final e in row.entries)
           e.key.toString().trim().toLowerCase(): e.value
       };
       Future<List<Map<String, dynamic>>> _csv(String file) async {
-        final id  = await drive.fileId(file, parentId);
+        final id = await drive.fileId(file, parentId);
+        if (id == null) {
+          // This should ideally not happen if parentId was not null, but good to check
+          throw Exception('Could not find file ID for $file. Sign-in issue?');
+        }
         final csv = await drive.downloadCsv(id);
+        if (csv == null) {
+          // This should ideally not happen if id was not null, but good to check
+          throw Exception('Could not download CSV for $file. Sign-in issue?');
+        }
         return CsvUtils.toMaps(csv).map(_lc).toList();
       }
 
-      // download three information sets
-      accounts.value     = (await _csv('AccountMaster.csv'))
+      accounts.value = (await _csv('AccountMaster.csv'))
           .map(AccountModel.fromMap).toList();
       transactions.value = (await _csv('AllAccounts.csv'))
           .map(AllAccountsModel.fromMap).toList();
@@ -78,11 +129,15 @@ class CustomerLedgerController extends GetxController {
       _rebuildOutstanding();
     } catch (e, st) {
       error.value = e.toString();
-      // ignore: avoid_print
-      print('[CustomerLedgerController] $e\n$st');
+      log('[CustomerLedgerController] Error loading data: $e\n$st');
+      if (e.toString().contains('Google Sign-In required') ||
+          e.toString().contains('oauth2_not_granted') ||
+          e.toString().contains('sign_in_failed')) { // Catch specific Google Sign-in related errors
+        requiresSignIn(true);
+        error.value = 'Google Sign-In is required to access data.';
+      }
     } finally {
       isLoading(false);
-      if (!silent) isLoading(false);
     }
   }
 

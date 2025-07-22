@@ -32,25 +32,24 @@ import 'screens/profit_screen.dart';
 final RouteObserver<ModalRoute<void>> routeObserver =
 RouteObserver<ModalRoute<void>>();
 
+// main.dart
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('en_IN', null);
-  // 1. Initialize GetStorage (important for theme persistence)
   await GetStorage.init();
-  // 2. Register your ThemeController early
   Get.put(ThemeController());
-  // 3. Ensure all other bindings are registered
-  await InitialBindings.ensure();
-  // 4. Perform silent sign-in BEFORE app launches
-  final signInController = Get.put(GoogleSignInController());
-  final account = await signInController.silentLogin();
-  if (account != null) {
-    signInController.user.value = account;
-  }
-  // 5. Initialize theme based on saved preference AFTER ThemeController is put
-  // This sets the initial theme mode for GetMaterialApp.
-  Get.find<ThemeController>().initTheme();
-  runApp(MyApp(isLoggedIn: account != null));
+  await InitialBindings.ensure(); // This will put GoogleSignInController and GoogleDriveService
+
+  final signInController = Get.find<GoogleSignInController>(); // Get the already put instance
+  // IMPORTANT: Do NOT await signInSilently here if you want to handle it on the login screen
+  // The silent login is already happening in the onInit of GoogleSignInController
+  // but we don't need to block the UI or make routing decisions based on its *immediate* result here.
+
+  // Instead, just check the initial state of the user.
+  // The GoogleSignInController's `user` stream will update when silent sign-in completes.
+  // For the initial route, we assume they're not logged in until proven otherwise by the controller's state.
+
+  runApp(MyApp(isLoggedIn: signInController.isSignedIn)); // Pass the *initial* state
 }
 
 class MyApp extends StatelessWidget {
@@ -60,46 +59,17 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Intl.defaultLocale = 'en_IN';
-    // Get an instance of your ThemeController
     final themeController = Get.find<ThemeController>();
     return GetMaterialApp(
       debugShowCheckedModeBanner: false,
       title: "Kisan Krushi",
       navigatorObservers: [routeObserver],
+      // The initialRoute now correctly points to login if not logged in
+      // or home if the silent login from GoogleSignInController's onInit succeeded.
       initialRoute: isLoggedIn ? Routes.home : Routes.login,
-      getPages: AppPages.routes, // Using AppPages.routes from app_pages.dart
-      // You can also pass the list directly if AppPages.routes is not used elsewhere.
-      // However, it's a good practice to centralize route definitions.
-      /*
-      getPages: [
-        // ───── auth & home ──────────────────────────────────────
-        GetPage(name: Routes.login, page: () => const LoginScreen()),
-        GetPage(name: Routes.home, page: () => HomeScreen()),
-        // ───── stock ────────────────────────────────────────────
-        GetPage(name: Routes.itemTypes, page: () => const ItemTypeScreen()),
-        GetPage(name: Routes.itemList, page: () => const ItemListScreen()),
-        // ───── sales (needs its own controller) ─────────────────
-        GetPage(
-          name: Routes.sales,
-          page: () => const SalesScreen(),
-          binding: BindingsBuilder(() {
-            Get.lazyPut(() => SalesController(), fenix: true);
-          }),
-        ),
-        // ───── ledger family (reuse PERMANENT controller) ───────
-        GetPage(
-          name: Routes.customerLedger,
-          page: () => const CustomerLedger_Screen(),
-        ),
-        GetPage(name: Routes.debtors, page: () => DebtorsScreen()),
-        GetPage(name: Routes.creditors, page: () => const CreditorsScreen()),
-        GetPage(name: Routes.profit, page: () => ProfitReportScreen()),
-        GetPage(name: Routes.profile, page: () => const ProfileScreen()),
-      ],
-      */
-      // Configure your themes here
-      theme: AppThemes.lightTheme, // Your defined light theme
-      darkTheme: AppThemes.darkTheme, // Your defined dark theme
+      getPages: AppPages.routes,
+      theme: AppThemes.lightTheme,
+      darkTheme: AppThemes.darkTheme,
       themeMode: themeController.theme,
     );
   }

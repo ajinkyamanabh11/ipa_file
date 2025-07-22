@@ -1,3 +1,4 @@
+import 'package:demo/controllers/sales_controller.dart';
 import 'package:get/get.dart';
 
 import '../controllers/google_signin_controller.dart';
@@ -36,5 +37,6 @@ class InitialBindings {
         // Batch‑wise profit (permanent singleton)
         // Get.put<ProfitReportController>(ProfitReportController(),
         //     permanent: true);
+    Get.lazyPut<SalesController>(()=> SalesController(), fenix: true);
   }
 }
