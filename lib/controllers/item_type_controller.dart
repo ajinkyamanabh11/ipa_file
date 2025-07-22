@@ -1,24 +1,14 @@
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
 import '../constants/paths.dart';
+import '../services/CsvDataServices.dart'; // Ensure correct import for CsvDataService
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
 import 'base_remote_controller.dart';
- // Import GetStorage
-import 'dart:developer'; // For logging
+import 'dart:developer';
 
 class ItemTypeController extends GetxController with BaseRemoteController {
   final drive = Get.find<GoogleDriveService>();
-  final GetStorage _box = GetStorage(); // Get an instance of GetStorage
-
-  // Cache keys
-  static const String _masterCacheKey = 'itemMasterCsvCache';
-  static const String _detailCacheKey = 'itemDetailCsvCache';
-  static const String _lastSyncTimestampKey = 'lastItemTypeSync';
-  static const Duration _cacheDuration = Duration(minutes: 10); // How long cache is valid
-
-  // ───── Drive Path ─────
-  List<String>? _softAgriPath;
+  final CsvDataService _csvDataService = Get.find<CsvDataService>();
 
   // ───── UI State ─────
   final allItemTypes = <String>[].obs;
@@ -27,16 +17,12 @@ class ItemTypeController extends GetxController with BaseRemoteController {
   final allItems = <Map<String, dynamic>>[].obs;
   final allItemDetailRows = <Map<String, dynamic>>[].obs;
 
-  // Key: ItemCode, Value: list of detail rows (all batches)
   final itemDetailsByCode = <String, List<Map<String, dynamic>>>{}.obs;
-
-  // Key: ItemCode, Value: map of txt_pkg => list of rows
   final groupedByPkg = <String, Map<String, List<Map<String, dynamic>>>>{}.obs;
 
-  // UI compatible: one row per ItemCode
   final latestDetailByCode = <String, Map<String, dynamic>>{}.obs;
 
-  final uniqueItemDetails = <Map<String, dynamic>>[].obs; // Moved here for clarity
+  final uniqueItemDetails = <Map<String, dynamic>>[].obs;
 
   final errorMessage = Rx<String?>(null);
 
@@ -48,135 +34,119 @@ class ItemTypeController extends GetxController with BaseRemoteController {
   @override
   Future<void> onInit() async {
     super.onInit();
-    await _initializePaths(); // Ensure path initialization completes before proceeding
+    log('[ItemTypeController] Initializing and loading data...');
+    // Initial load, typically not forced unless specified by app logic
+    await _load();
   }
 
-  Future<void> _initializePaths() async {
-    try {
-      _softAgriPath = await SoftAgriPath.build(drive);
-      log('[ItemTypeController] ✅ SoftAgriPath initialized.');
-      // 💡 CHANGE: Removed the isLoading.value check here.
-      // This ensures _load is always triggered once paths are ready
-      // as the primary data fetch, preventing a race condition.
-      await _load();
-    } catch (e, st) {
-      log('[ItemTypeController] ❌ Error initializing SoftAgriPath: $e');
-      log('$st');
-      _setError('Failed to load required application paths: $e');
-    }
-  }
+  // Exposed method to trigger data fetching with refresh option
+  Future<void> fetchItemTypes({bool silent = false, bool forceRefresh = false}) async =>
+      guard(() => _load(silent: silent, forceRefresh: forceRefresh));
 
-  Future<void> fetchItemTypes({bool silent = false}) async =>
-      guard(() => _load(silent: silent)); // This is for subsequent calls, which _load handles.
-
+  // Method for searching item types
   void search(String q) {
     filteredItemTypes.value = allItemTypes
         .where((t) => t.toLowerCase().contains(q.toLowerCase()))
         .toList();
   }
 
-  Future<void> _load({bool silent = false}) async {
-    // This null check remains crucial to prevent operations if something calls _load
-    // before _initializePaths has completed its task.
-    if (_softAgriPath == null) {
-      log('[ItemTypeController] ⚠️ _softAgriPath not initialized when _load was called. Returning.');
-      if (!silent) {
-        _setError('App paths not ready. Please try again.');
-      }
-      return;
-    }
-
+  // Core data loading and processing method
+  Future<void> _load({bool silent = false, bool forceRefresh = false}) async {
     if (!silent) isLoading(true);
+    errorMessage.value = null; // Clear previous errors
 
     try {
-      final parentId = await drive.folderId(_softAgriPath!);
+      // Load all CSVs from service, respecting the forceRefresh flag
+      await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
 
-      String? masterCsv;
-      String? detailCsv;
+      final String masterCsv = _csvDataService.itemMasterCsv.value;
+      final String detailCsv = _csvDataService.itemDetailCsv.value;
 
-      final lastSync = _box.read<int?>(_lastSyncTimestampKey);
-      final isCacheValid = lastSync != null &&
-          DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastSync)) < _cacheDuration;
-
-      // --- Caching Logic ---
-      if (isCacheValid) {
-        log('💡 Using cached ItemType CSVs (valid for ${_cacheDuration.inMinutes} mins)');
-        masterCsv = _box.read(_masterCacheKey);
-        detailCsv = _box.read(_detailCacheKey);
+      // Validate if essential CSV data is available
+      if (masterCsv.isEmpty || detailCsv.isEmpty) {
+        _setError('Item Master or Item Detail CSV data is empty. Cannot process item types.');
+        // Clear all relevant Rx lists/maps if data is missing
+        allItemTypes.clear();
+        filteredItemTypes.clear();
+        typeCounts.clear();
+        allItems.clear();
+        allItemDetailRows.clear();
+        itemDetailsByCode.clear();
+        groupedByPkg.clear();
+        latestDetailByCode.clear();
+        uniqueItemDetails.clear();
+        return;
       }
 
-      // Download if cache is invalid or missing
-      if (masterCsv == null || detailCsv == null) {
-        log('🌐 Cache invalid or missing for ItemType, downloading CSVs from Drive...');
-        masterCsv = await drive.downloadCsv(await drive.fileId('ItemMaster.csv', parentId));
-        detailCsv = await drive.downloadCsv(await drive.fileId('ItemDetail.csv', parentId));
+      log('⚡ ItemTypeController: Processing CSVs (from cache or new download)');
 
-        // Save to cache
-        await _box.write(_masterCacheKey, masterCsv);
-        await _box.write(_detailCacheKey, detailCsv);
-        await _box.write(_lastSyncTimestampKey, DateTime.now().millisecondsSinceEpoch);
-        log('💾 ItemType CSVs downloaded and cached.');
-      } else {
-        log('⚡ Using cached ItemType CSVs to process.');
-      }
-
-      // --- Continue with processing using the (potentially cached) CSV data ---
-
-      // ───── ItemMaster.csv ─────
-      final masterRows = CsvUtils.toMaps(masterCsv!);
+      // ───── Process ItemMaster.csv ─────
+      // Parse ItemMaster.csv (numbers can be parsed)
+      final masterRows = CsvUtils.toMaps(masterCsv);
       final counts = <String, int>{};
       for (final r in masterRows) {
         final type = r['ItemType']?.toString() ?? '';
         counts[type] = (counts[type] ?? 0) + 1;
       }
-      allItemTypes.value = counts.keys.toList()..sort();
-      filteredItemTypes.value = allItemTypes;
-      typeCounts.value = counts;
-      allItems.value = masterRows;
+      allItemTypes.value = counts.keys.toList()..sort(); // Populate item types and sort
+      filteredItemTypes.value = allItemTypes; // Initially, filtered are all types
+      typeCounts.value = counts; // Store counts per type
+      allItems.value = masterRows; // Store all master item rows
 
-      // ───── ItemDetail.csv ─────
-      final detailRows = CsvUtils.toMaps(detailCsv!);
-      allItemDetailRows.value = detailRows;
+      // ───── Process ItemDetail.csv ─────
+      // CRITICAL FIX: Parse ItemDetail.csv with parseNumbers: false
+      // This ensures batch numbers (like "002" vs "02") are treated as distinct strings.
+      final detailRows = CsvUtils.toMaps(detailCsv, parseNumbers: false);
+      allItemDetailRows.value = detailRows; // Store all detail rows
 
-      final seenComposite = <String>{};
-      final perCode = <String, List<Map<String, dynamic>>>{};
-      final pkgMap = <String, Map<String, List<Map<String, dynamic>>>>{};
-      final latestPerCode = <String, Map<String, dynamic>>{};
+      final seenComposite = <String>{}; // Tracks unique item-batch-pkg combinations
+      final perCode = <String, List<Map<String, dynamic>>>{}; // Details grouped by item code
+      final pkgMap = <String, Map<String, List<Map<String, dynamic>>>>{}; // Details grouped by item code then package
+      final Map<String, Map<String, dynamic>> tempLatestPerCode = {}; // Stores the "latest" detail row per item code
 
+      // Iterate through detail rows to populate the maps
       for (final row in detailRows) {
-        final itemCode = row['ItemCode']?.toString() ?? '';
-        final batchNo = row['BatchNo']?.toString() ?? '';
-        final pkg = row['txt_pkg']?.toString() ?? '';
+        final itemCode = row['ItemCode']?.toString().trim() ?? '';
+        // BatchNo is now guaranteed to be its raw string form (e.g., "002", "02")
+        final batchNo = row['BatchNo']?.toString().trim() ?? '';
+        final pkg = row['txt_pkg']?.toString().trim() ?? '';
 
+        // Skip rows with essential missing data
         if (itemCode.isEmpty || batchNo.isEmpty || pkg.isEmpty) continue;
 
+        // Create a composite key to identify unique item-batch-package combinations
         final compositeKey = '$itemCode|$batchNo|$pkg';
-        if (seenComposite.contains(compositeKey)) continue;
+        if (seenComposite.contains(compositeKey)) {
+          // If this combination has already been processed, skip to avoid duplicates
+          continue;
+        }
+        seenComposite.add(compositeKey); // Mark this combination as seen
 
-        seenComposite.add(compositeKey);
-
-        // ✅ All batches by code
+        // Add the row to the list for its itemCode
         perCode.putIfAbsent(itemCode, () => []).add(row);
 
-        // ✅ Group by txt_pkg
+        // Add the row to the package map (nested structure: ItemCode -> Pkg -> List of details)
         pkgMap.putIfAbsent(itemCode, () => {});
-        pkgMap[itemCode]![pkg] = (pkgMap[itemCode]![pkg] ?? [])..add(row);
+        pkgMap[itemCode]!.putIfAbsent(pkg, () => []).add(row);
 
-        // ✅ First seen as latest
-        latestPerCode.putIfAbsent(itemCode, () => row);
+        // Store this row as the "latest" for its itemCode (current logic: first one encountered)
+        tempLatestPerCode.putIfAbsent(itemCode, () => row);
       }
 
-      // Populate unique items AFTER all details are processed
+      // After processing all details, populate the unique items list
       populateUniqueItems();
 
+      // Update the reactive variables
       itemDetailsByCode.value = perCode;
       groupedByPkg.value = pkgMap;
-      latestDetailByCode.value = latestPerCode;
+      latestDetailByCode.value = tempLatestPerCode;
+
+      log('[ItemTypeController] ✅ ItemType data processed successfully.');
 
     } catch (e, st) {
       log('[ItemTypeController] ❌ Error loading ItemType data: $e');
-      log('$st');
-      // Clear data on error
+      log('$st'); // Log the stack trace for detailed debugging
+      // Clear all data structures on error
       allItemTypes.clear();
       filteredItemTypes.clear();
       typeCounts.clear();
@@ -192,17 +162,19 @@ class ItemTypeController extends GetxController with BaseRemoteController {
     }
   }
 
+  // Populates unique items based on item code, batch number, and package
   void populateUniqueItems() {
     final seen = <String>{};
     final result = <Map<String, dynamic>>[];
 
     for (final row in allItemDetailRows) {
-      final itemCode = row['ItemCode']?.toString() ?? '';
-      final batchNo = row['BatchNo']?.toString() ?? '';
-      final pkg = row['txt_pkg']?.toString() ?? '';
+      final itemCode = row['ItemCode']?.toString().trim() ?? '';
+      final batchNo = row['BatchNo']?.toString().trim() ?? '';
+      final pkg = row['txt_pkg']?.toString().trim() ?? '';
 
-      final key = '$itemCode|$batchNo|$pkg';
+      final key = '$itemCode|$batchNo|$pkg'; // Use the consistent key structure
 
+      // Ensure essential fields are present and the combination is unique
       if (itemCode.isEmpty || batchNo.isEmpty || pkg.isEmpty) continue;
       if (seen.contains(key)) continue;
 
@@ -217,10 +189,11 @@ class ItemTypeController extends GetxController with BaseRemoteController {
   List<Map<String, dynamic>> getBatches(String code, {String? pkg}) {
     final all = itemDetailsByCode[code] ?? [];
     if (pkg == null) return all;
-    return all.where((row) => row['txt_pkg']?.toString() == pkg).toList();
+    // Filter by package (normalized if needed, but here direct string comparison is fine after parseNumbers:false)
+    return all.where((row) => row['txt_pkg']?.toString().trim() == pkg.trim()).toList();
   }
 
-  /// Sort detail rows by field (asc or desc)
+  /// Sort detail rows by field (ascending or descending)
   List<Map<String, dynamic>> sortDetails(
       List<Map<String, dynamic>> rows,
       String field, {

@@ -1,13 +1,16 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart'; // Keep for DateUtils
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import '../constants/paths.dart';
+import '../services/CsvDataServices.dart';
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
+// NEW IMPORT
 import 'dart:developer';
 
 class TodayProfitController extends GetxController {
-  final drive = Get.find<GoogleDriveService>();
+  final GoogleDriveService drive = Get.find<GoogleDriveService>();
+  final CsvDataService _csvDataService = Get.find<CsvDataService>(); // Get CsvDataService instance
 
   final RxDouble todayTotalProfit = 0.0.obs;
   final RxBool isLoadingTodayProfit = false.obs;
@@ -24,14 +27,29 @@ class TodayProfitController extends GetxController {
     todayTotalProfit.value = 0.0; // Reset before loading
 
     final today = DateUtils.dateOnly(DateTime.now());
+    log('📆 TodayProfitController: Loading today\'s profit for $today');
 
     try {
-      final path = await SoftAgriPath.build(drive);
-      final folderId = await drive.folderId(path);
+      // 🔴 CRITICAL CHANGE: Use the centralized CsvDataService to get CSV data.
+      // Force download here to ensure the dashboard profit is always fresh.
+      await _csvDataService.loadAllCsvs(forceDownload: true);
 
-      final fileIdMaster = await drive.fileId('SalesInvoiceMaster.csv', folderId);
-      final csvMaster = await drive.downloadCsv(fileIdMaster);
-      final masterRows = CsvUtils.toMaps(csvMaster);
+      final masterCsv = _csvDataService.salesMasterCsv.value;
+      final detailsCsv = _csvDataService.salesDetailsCsv.value;
+      final itemMasterCsv = _csvDataService.itemMasterCsv.value;
+      final itemDetailCsv = _csvDataService.itemDetailCsv.value;
+
+      // Validate that CSV data is available
+      if (masterCsv.isEmpty || detailsCsv.isEmpty || itemMasterCsv.isEmpty || itemDetailCsv.isEmpty) {
+        log('⚠️ TodayProfitController: One or more required CSVs are empty. Cannot calculate today\'s profit.');
+        todayTotalProfit.value = 0.0;
+        return;
+      }
+
+      final masterRows = CsvUtils.toMaps(masterCsv);
+      final detailRows = CsvUtils.toMaps(detailsCsv);
+      final itemRows = CsvUtils.toMaps(itemMasterCsv);
+      final itemDetailRows = CsvUtils.toMaps(itemDetailCsv);
 
       final filteredInvoices = masterRows.where((r) {
         final rawDate = r['invoicedate'] ?? r['challandate'] ?? r['receiptdate'];
@@ -45,19 +63,6 @@ class TodayProfitController extends GetxController {
           return false;
         }
       }).toList();
-
-      final fileIdDetails = await drive.fileId('SalesInvoiceDetails.csv', folderId);
-      final csvDetails = await drive.downloadCsv(fileIdDetails);
-      final detailRows = CsvUtils.toMaps(csvDetails);
-
-      final fileIdItem = await drive.fileId('ItemMaster.csv', folderId);
-      final csvItem = await drive.downloadCsv(fileIdItem);
-      final itemRows = CsvUtils.toMaps(csvItem);
-
-      final fileIdItemDetail = await drive.fileId('ItemDetail.csv', folderId);
-      final csvItemDetail = await drive.downloadCsv(fileIdItemDetail);
-      final itemDetailRows = CsvUtils.toMaps(csvItemDetail);
-
 
       final Map<String, List<Map<String, dynamic>>> detailsByInvoice = {};
       for (final row in detailRows) {
@@ -99,6 +104,7 @@ class TodayProfitController extends GetxController {
 
           if (salesDetailQty <= 0 || itemCode == null || itemCode.isEmpty) continue;
 
+          // Item details lookup logic (remains the same)
           final lookupKey = '${itemCode}_${batchNo}';
           Map<String, dynamic>? matchingDetail;
 
@@ -135,12 +141,14 @@ class TodayProfitController extends GetxController {
         }
       }
       todayTotalProfit.value = currentDayProfit;
+      log('✅ TodayProfitController: Today\'s total profit: ₹${todayTotalProfit.value.toStringAsFixed(2)}');
     } catch (e, st) {
       log('[TodayProfitController] ❌ Error loading today\'s profit: $e');
       log('$st');
       todayTotalProfit.value = 0.0;
     } finally {
       isLoadingTodayProfit.value = false;
+      log('TodayProfitController: Loading finished. isLoadingTodayProfit: ${isLoadingTodayProfit.value}');
     }
   }
 

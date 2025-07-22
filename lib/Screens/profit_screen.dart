@@ -187,19 +187,32 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
   //   }).toList();
   // }
 
+  // lib/screens/profit_screen.dart
+
+// ... (inside _ProfitReportScreenState class)
+
   Widget _buildTableWithTotals(List<Map<String, dynamic>> rows, BuildContext context) {
+    // 🔴 IMPORTANT: This method now receives the ALREADY FILTERED rows
+    // from the Obx in the build method. So, `rows` here IS `prc.filteredRows`.
+
     final sortedRows = List<Map<String, dynamic>>.from(rows)
       ..sort((a, b) => a['billno'].toString().compareTo(b['billno'].toString()));
 
-    final rowsPer = sortedRows.length < 10 ? sortedRows.length : 10;
+    // Ensure rowsPer is at least 1 if there's data, to prevent errors for small datasets
+    final rowsPer = sortedRows.isEmpty ? 1 : (sortedRows.length < 10 ? sortedRows.length : 10);
+
 
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: PaginatedDataTable(
+        // Add a Key to force rebuild when data changes significantly
+        // This is a good practice for widgets that don't inherently react to data changes
+        key: ValueKey(sortedRows.hashCode), // Forces rebuild if list content changes
+        // (simple hashCode for demonstration, more robust keys possible)
         headingRowColor: MaterialStateProperty.all(Theme.of(context).colorScheme.surfaceVariant),
         columnSpacing: 24,
         rowsPerPage: rowsPer,
-        availableRowsPerPage: sortedRows.length < 10 ? [rowsPer] : const [10],
+        availableRowsPerPage: sortedRows.length < 10 && sortedRows.isNotEmpty ? [rowsPer] : const [10, 25, 50], // Provide more options if data grows
         showFirstLastButtons: true,
         columns: [
           DataColumn(label: Text('Sr.', style: Theme.of(context).textTheme.titleSmall)),
@@ -213,6 +226,9 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
           DataColumn(label: Text('Purchase Amt.', style: Theme.of(context).textTheme.titleSmall)),
           DataColumn(label: Text('Profit', style: Theme.of(context).textTheme.titleSmall)),
         ],
+        // 🔴 CRITICAL CHANGE: Instantiate _ProfitSource directly within the Obx
+        // (which calls _buildTableWithTotals). This ensures a new source is created
+        // whenever prc.filteredRows updates.
         source: _ProfitSource(sortedRows, context),
       ),
     );

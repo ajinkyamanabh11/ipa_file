@@ -4,8 +4,10 @@ import 'dart:developer';
 import 'package:get/get.dart';
 
 import '../constants/paths.dart';
+import '../services/CsvDataServices.dart';
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
+ // NEW IMPORT for CsvDataService
 
 // typed rows
 import '../model/account_master_model.dart';
@@ -14,7 +16,8 @@ import 'google_signin_controller.dart';
 
 class CustomerLedgerController extends GetxController {
   final GoogleDriveService drive = Get.find<GoogleDriveService>();
-  final GoogleSignInController _googleSignInController = Get.find<GoogleSignInController>(); // Get instance
+  final GoogleSignInController _googleSignInController = Get.find<GoogleSignInController>();
+  final CsvDataService _csvDataService = Get.find<CsvDataService>(); // NEW: Get CsvDataService instance
 
   // ───────────── reactive stores ─────────────
   final accounts = <AccountModel>[].obs;
@@ -33,9 +36,10 @@ class CustomerLedgerController extends GetxController {
   // status flags
   final isLoading = false.obs;
   final error = RxnString();
-  final requiresSignIn = false.obs; // New flag to indicate sign-in is required
+  final requiresSignIn = false.obs;
 
-  late final List<String> _softAgriPath;
+  // No longer need _softAgriPath here, as CsvDataService manages the file fetching.
+  // late final List<String> _softAgriPath;
 
 
   // ───────────── life‑cycle ─────────────
@@ -45,12 +49,12 @@ class CustomerLedgerController extends GetxController {
     // Listen to sign-in status changes
     _googleSignInController.user.listen((account) {
       if (account != null) {
-        requiresSignIn(false); // User is signed in
+        log('👤 CustomerLedgerController: Google user signed in. Loading data...');
+        requiresSignIn(false);
         _load(); // Reload data if signed in after being signed out
       } else {
-        // If user becomes null, and we were previously loading data, it means sign-out happened
-        // or silent sign-in failed. Mark as requiring sign-in.
-        if (!isLoading.value) { // Only set if not already in a loading state trying to sign in
+        log('👤 CustomerLedgerController: Google user signed out.');
+        if (!isLoading.value) {
           requiresSignIn(true);
           error.value = 'Google Sign-In is required to access data.';
           // Clear existing data when sign-out/failure occurs
@@ -64,80 +68,102 @@ class CustomerLedgerController extends GetxController {
       }
     });
 
-    // Initialize path, but only attempt data load if user is already signed in
-    _softAgriPath = await SoftAgriPath.build(drive);
-
     // Initial load attempt based on current sign-in status
+    // Now just trigger a load, CsvDataService will handle initial download/cache logic
     if (_googleSignInController.isSignedIn) {
+      log('👤 CustomerLedgerController: Already signed in on init. Loading data...');
       _load();
     } else {
+      log('👤 CustomerLedgerController: Not signed in on init. Awaiting sign-in.');
       requiresSignIn(true);
       error.value = 'Please sign in to your Google Account to load data.';
     }
   }
 
-  Future<void> refreshDebtors() async => _load(silent: true);
+  // refreshDebtors will now force a refresh of the underlying CSVs
+  Future<void> refreshDebtors() async => _load(silent: true, forceRefreshCsv: true);
   Future<void> loadData() => _load();
 
   // ───────────── loader ─────────────
-  Future<void> _load({bool silent = false}) async {
+  Future<void> _load({bool silent = false, bool forceRefreshCsv = false}) async {
     if (!_googleSignInController.isSignedIn) {
-      // If not signed in, don't even try to load data
+      log('🚫 CustomerLedgerController: Not signed in. Cannot load data.');
       error.value = 'Google Sign-In is required to access data.';
       requiresSignIn(true);
       return;
     }
 
     try {
-      if (!silent) isLoading(true); // Only show full loader if not silent refresh
+      if (!silent) isLoading(true);
       error.value = null;
-      requiresSignIn(false); // Reset sign-in required flag
+      requiresSignIn(false);
 
-      final parentId = await drive.folderId(_softAgriPath);
-      if (parentId == null) {
-        // This means _api() in GoogleDriveService returned null due to no auth
-        error.value = 'Google Sign-In is required to access Google Drive.';
-        requiresSignIn(true);
-        return;
+      // 🔴 CRITICAL CHANGE: Load all necessary CSVs via CsvDataService
+      await _csvDataService.loadAllCsvs(forceDownload: forceRefreshCsv);
+
+      // Check if the necessary CSVs from CsvDataService are available
+      if (_csvDataService.accountMasterCsv.value.isEmpty ||
+          _csvDataService.allAccountsCsv.value.isEmpty ||
+          _csvDataService.customerInfoCsv.value.isEmpty ||
+          _csvDataService.supplierInfoCsv.value.isEmpty)
+      {
+        log('⚠️ CustomerLedgerController: Required CSV data missing after CsvDataService load.');
+        // This might indicate a network issue or Google Drive permission problem
+        // that CsvDataService couldn't fully resolve.
+        error.value = 'Failed to load essential ledger data. Please check your internet connection or Google Drive permissions.';
+        // Don't set requiresSignIn unless specifically a sign-in error propagated
+        return; // Exit if data isn't available
       }
+
 
       Map<String, dynamic> _lc(Map<String, dynamic> row) => {
         for (final e in row.entries)
           e.key.toString().trim().toLowerCase(): e.value
       };
-      Future<List<Map<String, dynamic>>> _csv(String file) async {
-        final id = await drive.fileId(file, parentId);
-        if (id == null) {
-          // This should ideally not happen if parentId was not null, but good to check
-          throw Exception('Could not find file ID for $file. Sign-in issue?');
-        }
-        final csv = await drive.downloadCsv(id);
-        if (csv == null) {
-          // This should ideally not happen if id was not null, but good to check
-          throw Exception('Could not download CSV for $file. Sign-in issue?');
-        }
-        return CsvUtils.toMaps(csv).map(_lc).toList();
-      }
 
-      accounts.value = (await _csv('AccountMaster.csv'))
-          .map(AccountModel.fromMap).toList();
-      transactions.value = (await _csv('AllAccounts.csv'))
-          .map(AllAccountsModel.fromMap).toList();
-      customerInfo.value = await _csv('CustomerInformation.csv');
-      supplierInfo.value = await _csv('SupplierInformation.csv');
+      // Populate controller's data from CsvDataService's reactive properties
+      accounts.value = CsvUtils.toMaps(_csvDataService.accountMasterCsv.value)
+          .map(_lc) // Apply lowercase keys conversion
+          .map(AccountModel.fromMap)
+          .toList();
+
+      transactions.value = CsvUtils.toMaps(_csvDataService.allAccountsCsv.value)
+          .map(_lc) // Apply lowercase keys conversion
+          .map(AllAccountsModel.fromMap)
+          .toList();
+
+      customerInfo.value = CsvUtils.toMaps(_csvDataService.customerInfoCsv.value)
+          .map(_lc) // Apply lowercase keys conversion
+          .toList();
+
+      supplierInfo.value = CsvUtils.toMaps(_csvDataService.supplierInfoCsv.value)
+          .map(_lc) // Apply lowercase keys conversion
+          .toList();
 
       _rebuildOutstanding();
+      log('✅ CustomerLedgerController: Data loaded and outstanding balances rebuilt.');
+
     } catch (e, st) {
+      log('[CustomerLedgerController] ❌ Error loading data: $e\n$st');
       error.value = e.toString();
-      log('[CustomerLedgerController] Error loading data: $e\n$st');
+      // Keep specific sign-in error handling here
       if (e.toString().contains('Google Sign-In required') ||
           e.toString().contains('oauth2_not_granted') ||
-          e.toString().contains('sign_in_failed')) { // Catch specific Google Sign-in related errors
+          e.toString().contains('sign_in_failed')) {
         requiresSignIn(true);
         error.value = 'Google Sign-In is required to access data.';
+      } else {
+        // Clear data on general errors too
+        accounts.clear();
+        transactions.clear();
+        customerInfo.clear();
+        supplierInfo.clear();
+        debtors.clear();
+        creditors.clear();
       }
     } finally {
       isLoading(false);
+      log('CustomerLedgerController: Loading finished. isLoading: ${isLoading.value}');
     }
   }
 
@@ -177,7 +203,7 @@ class CustomerLedgerController extends GetxController {
         'name'          : acc.accountName,
         'type'          : acc.type,
         'closingBalance': bal.abs(),
-        'area'          : _pickadress(infoRow),
+        'area'          : _pickAddress(infoRow), // Corrected call
         'mobile'        : _pickPhone(infoRow),
         'drCr'          : bal > 0 ? 'Dr' : 'Cr',
       };
@@ -185,8 +211,9 @@ class CustomerLedgerController extends GetxController {
       (bal > 0 ? drTmp : crTmp).add(row);
     }
 
-    debtors  (drTmp);
+    debtors(drTmp);
     creditors(crTmp);
+    log('CustomerLedgerController: Debtors: ${debtors.length}, Creditors: ${creditors.length}');
   }
 
   /// find first non‑empty phone / mobile column (many exports differ)
@@ -203,12 +230,13 @@ class CustomerLedgerController extends GetxController {
     }
     return '-';
   }
-  String _pickadress(Map<String,dynamic>?row){
+  // Renamed _pickadress to _pickAddress for consistency and clarity
+  String _pickAddress(Map<String,dynamic>?row){
     if(row==null)return'';
-    const Keys=[
+    const keys=[ // Corrected to `keys` from `Keys`
       'area', 'address1' ,'address'
     ];
-    for(final k in Keys){
+    for(final k in keys){
       final v=row[k];
       if (v!=null && v.toString().trim().isNotEmpty) return v.toString();
     }
@@ -234,11 +262,13 @@ class CustomerLedgerController extends GetxController {
     for (final t in filtered) t.isDr ? dr += t.amount : cr += t.amount;
     drTotal(dr);
     crTotal(cr);
+    log('CustomerLedgerController: Filtered by name "$name". Dr: $drTotal, Cr: $crTotal');
   }
 
   void clearFilter() {
     filtered.clear();
     drTotal(0);
     crTotal(0);
+    log('CustomerLedgerController: Filter cleared.');
   }
 }

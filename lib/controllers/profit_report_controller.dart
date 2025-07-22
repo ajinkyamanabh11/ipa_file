@@ -1,21 +1,14 @@
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import '../constants/paths.dart';
+import '../services/CsvDataServices.dart'; // Corrected service name import
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
-import 'package:get_storage/get_storage.dart'; // Import GetStorage
 import 'dart:developer';
 
 class ProfitReportController extends GetxController {
   final drive = Get.find<GoogleDriveService>();
-  final GetStorage _box = GetStorage(); // Get an instance of GetStorage
-
-  static const String _masterCacheKey = 'salesMasterCsv';
-  static const String _detailsCacheKey = 'salesDetailsCsv';
-  static const String _itemMasterCacheKey = 'itemMasterCsv';
-  static const String _itemDetailCacheKey = 'itemDetailCsv';
-  static const String _lastSyncTimestampKey = 'lastProfitSync';
-  static const Duration _cacheDuration = Duration(minutes: 10); // How long cache is valid
+  final CsvDataService _csvDataService = Get.find<CsvDataService>(); // Get CsvDataService instance
 
   DateTime fromDate = DateTime.now();
   DateTime toDate = DateTime.now();
@@ -47,30 +40,47 @@ class ProfitReportController extends GetxController {
     totalProfit.value = 0.0;
   }
 
+  // In loadProfitReport method:
   Future<void> loadProfitReport({
     required DateTime startDate,
     required DateTime endDate,
+    bool forceRefresh = false,
   }) async {
     isLoading.value = true;
     totalSales.value = 0.0;
     totalPurchase.value = 0.0;
     totalProfit.value = 0.0;
+    batchProfits.clear();
+
+    log('📈 ProfitReportController: Starting load for dates: $startDate to $endDate (Force Refresh parameter received: $forceRefresh)'); // 🔴 NEW/UPDATED LOG
 
     try {
-      final data = await _loadBatchData(startDate, endDate);
-      batchProfits.assignAll(data);
-      _updateTotals(data);
+      await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
+      log('📈 ProfitReportController: CsvDataService.loadAllCsvs completed. Force download was: $forceRefresh'); // 🔴 NEW LOG
+
+      final data = await _processBatchData(startDate, endDate);
+      log('📈 ProfitReportController: _processBatchData returned ${data.length} entries.');
+
+      if (data.isNotEmpty) {
+        batchProfits.assignAll(data);
+        log('📈 ProfitReportController: batchProfits updated. New count: ${batchProfits.length}');
+        _updateTotals(data);
+        log('📈 ProfitReportController: Totals updated. Sales: ${totalSales.value}, Profit: ${totalProfit.value}');
+      } else {
+        batchProfits.clear();
+        _updateTotals([]);
+        log('📈 ProfitReportController: No data returned from _processBatchData, batchProfits cleared. Totals reset to 0.'); // 🔴 UPDATED LOG
+      }
     } catch (e, st) {
-      print('[ProfitReport] ❌ Error: $e');
-      print(st);
+      log('[ProfitReport] ❌ Error in loadProfitReport: $e\n$st');
       batchProfits.clear();
       filteredInvoices.clear();
       _updateTotals([]);
     } finally {
       isLoading.value = false;
+      log('📈 ProfitReportController: Loading finished. isLoading: ${isLoading.value}');
     }
   }
-
   void _updateTotals(List<Map<String, dynamic>> rows) {
     double sale = 0;
     double purchase = 0;
@@ -94,57 +104,29 @@ class ProfitReportController extends GetxController {
     }).toUpperCase().trim();
   }
 
-  Future<List<Map<String, dynamic>>> _loadBatchData(
+  // Renamed from _loadBatchData to _processBatchData as it no longer loads from Drive directly
+  Future<List<Map<String, dynamic>>> _processBatchData(
       DateTime startDate, DateTime endDate) async {
     fromDate = startDate;
     toDate = endDate;
-    print('📆 Loading profit report from $fromDate to $toDate');
+    log('📆 ProfitReportController: Processing profit report from $fromDate to $toDate');
 
-    final path = await SoftAgriPath.build(drive);
-    final folderId = await drive.folderId(path);
+    // Get raw CSV strings from CsvDataService's reactive properties
+    final masterCsv = _csvDataService.salesMasterCsv.value;
+    final detailsCsv = _csvDataService.salesDetailsCsv.value;
+    final itemMasterCsv = _csvDataService.itemMasterCsv.value;
+    final itemDetailCsv = _csvDataService.itemDetailCsv.value;
 
-    // --- Caching Logic ---
-    String? masterCsv;
-    String? detailsCsv;
-    String? itemMasterCsv;
-    String? itemDetailCsv;
-
-    final lastSync = _box.read<int?>(_lastSyncTimestampKey);
-    final isCacheValid = lastSync != null &&
-        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastSync)) < _cacheDuration;
-
-    if (isCacheValid) {
-      print('💡 Using cached CSVs (valid for ${_cacheDuration.inMinutes} mins)');
-      masterCsv = _box.read(_masterCacheKey);
-      detailsCsv = _box.read(_detailsCacheKey);
-      itemMasterCsv = _box.read(_itemMasterCacheKey);
-      itemDetailCsv = _box.read(_itemDetailCacheKey);
+    // Validate that CSV data is available
+    if (masterCsv.isEmpty || detailsCsv.isEmpty || itemMasterCsv.isEmpty || itemDetailCsv.isEmpty) {
+      log('⚠️ ProfitReportController: One or more required CSVs are empty. Cannot process report.');
+      return [];
     }
 
-    // Download if cache is invalid or missing
-    if (masterCsv == null || detailsCsv == null || itemMasterCsv == null || itemDetailCsv == null) {
-      print('🌐 Cache invalid or missing, downloading CSVs from Drive...');
-      masterCsv = await drive.downloadCsv(await drive.fileId('SalesInvoiceMaster.csv', folderId));
-      detailsCsv = await drive.downloadCsv(await drive.fileId('SalesInvoiceDetails.csv', folderId));
-      itemMasterCsv = await drive.downloadCsv(await drive.fileId('ItemMaster.csv', folderId));
-      itemDetailCsv = await drive.downloadCsv(await drive.fileId('ItemDetail.csv', folderId));
-
-      // Save to cache
-      await _box.write(_masterCacheKey, masterCsv);
-      await _box.write(_detailsCacheKey, detailsCsv);
-      await _box.write(_itemMasterCacheKey, itemMasterCsv);
-      await _box.write(_itemDetailCacheKey, itemDetailCsv);
-      await _box.write(_lastSyncTimestampKey, DateTime.now().millisecondsSinceEpoch);
-      print('💾 CSVs downloaded and cached.');
-    } else {
-      print('⚡ Using cached CSVs to process report.');
-    }
-
-    // --- Continue with processing using the (potentially cached) CSV data ---
-    final masterRows = CsvUtils.toMaps(masterCsv!);
-    final detailRows = CsvUtils.toMaps(detailsCsv!);
-    final itemRows = CsvUtils.toMaps(itemMasterCsv!);
-    final itemDetailRows = CsvUtils.toMaps(itemDetailCsv!);
+    final masterRows = CsvUtils.toMaps(masterCsv);
+    final detailRows = CsvUtils.toMaps(detailsCsv);
+    final itemRows = CsvUtils.toMaps(itemMasterCsv);
+    final itemDetailRows = CsvUtils.toMaps(itemDetailCsv);
 
     final filtered = masterRows.where((r) {
       final rawDate = r['invoicedate'] ?? r['challandate'] ?? r['receiptdate'];
@@ -162,7 +144,7 @@ class ProfitReportController extends GetxController {
     }).toList();
 
     filteredInvoices.assignAll(filtered);
-    print('📄 Filtered invoices: ${filtered.length}');
+    log('📄 ProfitReportController: Filtered invoices: ${filtered.length}');
 
     final Map<String, List<Map<String, dynamic>>> detailsByInvoice = {};
     for (final row in detailRows) {
@@ -185,7 +167,6 @@ class ProfitReportController extends GetxController {
       itemDetailsByItemBatch.putIfAbsent(key, () => []).add(row);
     }
 
-
     final List<Map<String, dynamic>> results = [];
 
     for (final inv in filtered) {
@@ -205,16 +186,12 @@ class ProfitReportController extends GetxController {
         final salesDetailQty = num.tryParse('${d['qty']}') ?? 0;
         final salesDetailPrice = double.tryParse('${d['CGSTTaxableAmt']}') ?? 0.0;
 
-        // log("DEBUG: SalesInvoiceDetails item: $itemCode - Sales Packing (Normalized): $salesPacking");
-
         if (salesDetailQty <= 0 || itemCode == null || itemCode.isEmpty) continue;
 
         final item = itemMap[itemCode];
         final itemName = item?['itemname']?.toString().trim() ?? itemCode;
 
         final lookupKey = '${itemCode}_${batchNo}';
-        // log("🔍 Trying lookupKey (ItemCode_BatchNo): $lookupKey with Sales Packing (Normalized): $salesPacking");
-
         Map<String, dynamic>? matchingDetail;
 
         List<Map<String, dynamic>> potentialMatches = [];
@@ -229,9 +206,6 @@ class ProfitReportController extends GetxController {
                   (detail['BatchNo']?.toString().trim().toUpperCase() == '..' ||
                       detail['BatchNo']?.toString().trim().isEmpty == true)
           ).toList();
-          // if (potentialMatches.isNotEmpty) {
-          //   log("✅ Fallback matches by ItemCode with empty/placeholder BatchNo found for: $lookupKey (Count: ${potentialMatches.length})");
-          // }
         }
 
         if (potentialMatches.isNotEmpty) {
@@ -245,24 +219,10 @@ class ProfitReportController extends GetxController {
           );
         }
 
-        // if (matchingDetail != null) {
-        //   log("✅ Exact match found for: $lookupKey with Packing (Normalized): $salesPacking");
-        // } else {
-        //   log("❌ No match found for: $lookupKey with Packing (Normalized): $salesPacking");
-        //   log("🔎 Did not find an exact ItemDetail for ItemCode: $itemCode, BatchNo: $batchNo, Sales Packing (Normalized): $salesPacking");
-        //   if (potentialMatches.isNotEmpty) {
-        //     log("   Available ItemDetail packings (Normalized) for $lookupKey:");
-        //     for (var detail in potentialMatches) {
-        //       final txtPkg = detail['txt_pkg']?.toString().trim() ?? '';
-        //       final cmbUnit = detail['cmb_unit']?.toString().trim() ?? '';
-        //       log("     - ${_normalizePacking('$txtPkg$cmbUnit')}");
-        //     }
-        //   }
-        // }
-
-        final itemDetailTxtPkg = matchingDetail?['txt_pkg']?.toString().trim().toUpperCase() ?? '';
-        final itemDetailCmbUnit = matchingDetail?['cmb_unit']?.toString().trim().toUpperCase() ?? '';
-        final calculatedPacking = '$itemDetailTxtPkg$itemDetailCmbUnit';
+        // Define calculatedPacking here before using it in the 'entry' map
+        final String calculatedPacking = (matchingDetail != null)
+            ? '${matchingDetail['txt_pkg']?.toString().trim().toUpperCase() ?? ''}${matchingDetail['cmb_unit']?.toString().trim().toUpperCase() ?? ''}'
+            : ''; // Provide a default empty string if no match found
 
         final purcPricePerUnit = double.tryParse('${matchingDetail?['PurchasePrice']}') ?? 0.0;
         final totalPurchase = purcPricePerUnit * salesDetailQty;
@@ -276,20 +236,18 @@ class ProfitReportController extends GetxController {
           'sales': salesDetailPrice,
           'purchase': totalPurchase,
           'profit': profitCalculated,
-          'packing': calculatedPacking,
+          'packing': calculatedPacking, // Now `calculatedPacking` is defined
           'itemName': itemName,
           'itemCode': itemCode,
           'date': invoiceDate,
         };
-
-        // log("🧾 Name: $itemName | Packing: $calculatedPacking | Qty: $salesDetailQty | Sale: $salesDetailPrice | Purchase: $totalPurchase | Profit: $profitCalculated");
 
         results.add(entry);
       }
     }
 
     results.sort((a, b) => a['billno'].toString().compareTo(b['billno'].toString()));
-    print('[ProfitReport] ✅ Loaded ${results.length} batch entries');
+    log('[ProfitReport] ✅ _processBatchData finished processing. Returning ${results.length} batch entries');
     return results;
   }
 
