@@ -1,6 +1,8 @@
 import 'package:demo/Screens/Creditors_screen.dart';
 import 'package:demo/Screens/Debtors_screen.dart';
+import 'package:demo/Screens/stock_report.dart';
 import 'package:get/get.dart';
+import 'package:googleapis/dataproc/v1.dart';
 import '../Screens/User_profile_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/login_screen.dart';
@@ -25,7 +27,7 @@ class AppPages {
     //GetPage(name: Routes.transactions, page: () {}),
     GetPage(name: Routes.sales, page: () => const SalesScreen()),
     GetPage(name: Routes.profit, page: () => const ProfitReportScreen()),
-    GetPage(name: Routes.itemTypes, page: () => const ItemTypeScreen()),
+    GetPage(name: Routes.itemTypes, page: () => StockScreen()),
     GetPage(name: Routes.itemList, page: () => const ItemListScreen()),
     GetPage(name: Routes.profile, page: () => const ProfileScreen()), // <-- Must be present and correctly defined
   ];

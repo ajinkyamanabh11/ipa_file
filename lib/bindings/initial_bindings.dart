@@ -1,6 +1,7 @@
 // lib/initial_bindings.dart
 // ... (existing imports)
 
+import 'package:demo/controllers/stock_report_controller.dart';
 import 'package:get/get.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:get_storage/get_storage.dart';
@@ -56,6 +57,7 @@ class InitialBindings {
     // If it's only for a specific screen and can be disposed, fenix is fine.
     // For now, let's assume it's okay as you had it or as lazyPut.
 
+    Get.lazyPut<StockReportController>(() => StockReportController(), fenix: true);
     Get.lazyPut<SalesController>(() => SalesController(), fenix: true);
   }
 }
