@@ -41,7 +41,7 @@ class _StockScreenState extends State<StockScreen> {
     final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
-      appBar: const CustomAppBar(title: Text('Stock Overview')),
+      appBar: const CustomAppBar(title: Text('Stock Report')),
       body: Column(
         children: [
           Padding(
