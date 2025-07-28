@@ -55,10 +55,10 @@ class StockReportController extends GetxController {
     errorMessage.value = null;
     try {
       await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
-      print('--- Raw Item Master CSV Data ---');
-      print(_csvDataService.itemMasterCsv.value.isEmpty ? 'Item Master CSV is empty.' : _csvDataService.itemMasterCsv.value);
-      print('--- Raw Item Detail CSV Data ---');
-      print(_csvDataService.itemDetailCsv.value.isEmpty ? 'Item Detail CSV is empty.' : _csvDataService.itemDetailCsv.value);
+      //print('--- Raw Item Master CSV Data ---');
+      //print(_csvDataService.itemMasterCsv.value.isEmpty ? 'Item Master CSV is empty.' : _csvDataService.itemMasterCsv.value);
+      //print('--- Raw Item Detail CSV Data ---');
+      //print(_csvDataService.itemDetailCsv.value.isEmpty ? 'Item Detail CSV is empty.' : _csvDataService.itemDetailCsv.value);
 
       _applyFilter(); // Apply filter after loading new data
 
@@ -90,23 +90,31 @@ class StockReportController extends GetxController {
     final List<Map<String, dynamic>> allItemDetails =
     CsvUtils.toMaps(
         _csvDataService.itemDetailCsv.value,
-        stringColumns: ['BatchNo', 'ItemCode', 'txt_pkg', 'cmb_unit'] // Ensure these are strings
-    );
+        stringColumns: ['BatchNo', 'ItemCode', 'txt_pkg', 'cmb_unit']);
+
+
     final List<Map<String, dynamic>> allItemsMaster =
     CsvUtils.toMaps(
         _csvDataService.itemMasterCsv.value,
         stringColumns: ['ItemCode', 'ItemName', 'ItemType'] // Ensure these are strings
     );
 
-    print('--- Parsed Item Master Data (List<Map<String, dynamic>>) ---');
-    print(allItemsMaster.isEmpty ? 'Parsed Item Master is empty.' : allItemsMaster);
-    print('--- Parsed Item Detail Data (List<Map<String, dynamic>>) ---');
-    print(allItemDetails.isEmpty ? 'Parsed Item Detail is empty.' : allItemDetails);
+    //print('--- Parsed Item Master Data (List<Map<String, dynamic>>) ---');
+    //print(allItemsMaster.isEmpty ? 'Parsed Item Master is empty.' : allItemsMaster);
+    //print('--- Parsed Item Detail Data (List<Map<String, dynamic>>) ---');
+    //print(allItemDetails.isEmpty ? 'Parsed Item Detail is empty.' : allItemDetails);
 
     final filteredRawItemDetails = allItemDetails.where((itemDetail) {
       final currentStock = double.tryParse(itemDetail['Currentstock']?.toString() ?? '0') ?? 0.0;
-      return currentStock > 0;
+      return currentStock != 0 ;
     }).toList();
+    //print('--- Printing each Currentstock value line by line ---');
+    for (final item in allItemDetails) {
+      final currentStock = item['Currentstock'];
+
+        //print(currentStock);
+
+    }
 
     for (final itemDetail in filteredRawItemDetails) {
       final itemCode = itemDetail['ItemCode']?.toString().trim() ?? '';
@@ -115,7 +123,7 @@ class StockReportController extends GetxController {
       final cmbUnit = itemDetail['cmb_unit']?.toString().trim() ?? '';
 
       if (itemCode.isEmpty || batchNo.isEmpty || txtPkg.isEmpty || cmbUnit.isEmpty) {
-        print('Skipping itemDetail due to missing essential fields: $itemDetail');
+        //print('Skipping itemDetail due to missing essential fields: $itemDetail');
         continue;
       }
 
@@ -173,8 +181,8 @@ class StockReportController extends GetxController {
     filteredStockData.value = processedList;
     totalCurrentStock.value = currentTotalStock;
 
-    print('--- Final Filtered & Sorted Stock Data ---');
-    print(filteredStockData.isEmpty ? 'No filtered stock data.' : filteredStockData);
+    //print('--- Final Filtered & Sorted Stock Data ---');
+    //print(filteredStockData.isEmpty ? 'No filtered stock data.' : filteredStockData);
     print('--- Calculated Total Current Stock: ${totalCurrentStock.value} ---');
   }
 }

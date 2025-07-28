@@ -7,6 +7,7 @@ import '../controllers/stock_report_controller.dart';
 import '../widget/rounded_search_field.dart';
 import '../widget/animated_Dots_LoadingText.dart';
 import '../widget/custom_app_bar.dart';
+import 'dart:developer'; // Import for the log function
 
 class StockScreen extends StatefulWidget {
   const StockScreen({super.key});
@@ -292,6 +293,13 @@ class StockDataSource extends DataTableSource {
     final Color surfaceColor = Theme.of(context).colorScheme.surface;
     final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
 
+    // Get the formatted stock value
+    final formattedStock = _stockFormatter.format(row['Current Stock'] ?? 0);
+    final itemType = row['Type']?.toString() ?? '';
+
+    // Print to console using log() from dart:developer
+    log(formattedStock);//
+
     return DataRow.byIndex(
       index: index,
       color: MaterialStateProperty.all(index.isEven ? surfaceColor : surfaceVariantColor),
@@ -301,7 +309,8 @@ class StockDataSource extends DataTableSource {
         DataCell(Text(row['Item Name']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
         DataCell(Text(row['Batch No']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
         DataCell(Text(row['Package']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
-        DataCell(Text(_stockFormatter.format(row['Current Stock'] ?? 0), style: TextStyle(color: onSurfaceColor))),
+        DataCell(Text(formattedStock, style: TextStyle(color: onSurfaceColor))),
+        // Display formatted stock
         DataCell(Text(row['Type']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
       ],
     );
