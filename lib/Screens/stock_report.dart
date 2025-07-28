@@ -48,6 +48,11 @@ class _StockScreenState extends State<StockScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: _buildSearchField(),
           ),
+          // New: Sort options
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+            child: _buildSortOptions(context),
+          ),
           const SizedBox(height: 10),
           Expanded( // Expanded takes the remaining vertical space
             child: Obx(() {
@@ -157,6 +162,72 @@ class _StockScreenState extends State<StockScreen> {
         // searchController listener already updates stockReportController.searchQuery
       },
     );
+  }
+
+  // New: Widget to build sort options
+  Widget _buildSortOptions(BuildContext context) {
+    final Color primaryColor = Theme.of(context).primaryColor;
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
+
+    return Obx(() => Row(
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: [
+        // Sort by Item Name
+        ChoiceChip(
+          label: Text('Item Name'),
+          selected: stockReportController.sortByColumn.value == 'Item Name',
+          onSelected: (selected) {
+            if (selected) {
+              stockReportController.setSortColumn('Item Name');
+            } else {
+              // Optionally, handle deselection if you want a 'no sort' state
+              // For simplicity, we'll just toggle if already selected
+              stockReportController.toggleSortOrder();
+            }
+          },
+          selectedColor: primaryColor,
+          labelStyle: TextStyle(
+            color: stockReportController.sortByColumn.value == 'Item Name'
+                ? Theme.of(context).colorScheme.onPrimary
+                : onSurfaceColor,
+          ),
+          backgroundColor: surfaceVariantColor,
+        ),
+        const SizedBox(width: 8),
+        // Sort by Current Stock
+        ChoiceChip(
+          label: Text('Current Stock'),
+          selected: stockReportController.sortByColumn.value == 'Current Stock',
+          onSelected: (selected) {
+            if (selected) {
+              stockReportController.setSortColumn('Current Stock');
+            } else {
+              stockReportController.toggleSortOrder();
+            }
+          },
+          selectedColor: primaryColor,
+          labelStyle: TextStyle(
+            color: stockReportController.sortByColumn.value == 'Current Stock'
+                ? Theme.of(context).colorScheme.onPrimary
+                : onSurfaceColor,
+          ),
+          backgroundColor: surfaceVariantColor,
+        ),
+        const SizedBox(width: 8),
+        // Toggle sort order (Asc/Desc)
+        IconButton(
+          icon: Icon(
+            stockReportController.sortAscending.value ? Icons.arrow_upward : Icons.arrow_downward,
+            color: primaryColor, // Highlight sort direction
+          ),
+          tooltip: stockReportController.sortAscending.value ? 'Sort Ascending' : 'Sort Descending',
+          onPressed: () {
+            stockReportController.toggleSortOrder();
+          },
+        ),
+      ],
+    ));
   }
 
   Widget _buildTotalStockCard(BuildContext context) {
