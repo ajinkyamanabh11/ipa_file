@@ -5,7 +5,6 @@ import 'package:flutter/material.dart'; // For DateUtils (though not directly us
 import 'package:csv/csv.dart'; // Not directly used here, but good to keep if other methods use it
 import '../services/CsvDataServices.dart';
 import '../util/csv_utils.dart';
-import 'dart:isolate';
 
 class StockReportController extends GetxController {
   var isLoading = true.obs;
@@ -194,8 +193,10 @@ class StockReportController extends GetxController {
         continue;
       }
 
-      final masterItem = allItemsMaster
-          .firstWhereOrNull((item) => item['ItemCode']?.toString().trim() == itemCode);
+      final masterItem = allItemsMaster.cast<Map<String, dynamic>?>().firstWhere(
+        (item) => item?['ItemCode']?.toString().trim() == itemCode,
+        orElse: () => null,
+      );
       final itemName = masterItem?['ItemName']?.toString().trim() ?? 'N/A';
       final itemType = masterItem?['ItemType']?.toString().trim() ?? 'N/A';
 
@@ -257,8 +258,10 @@ class StockReportController extends GetxController {
           continue;
         }
 
-        final masterItem = allItemsMaster
-            .firstWhereOrNull((item) => item['ItemCode']?.toString().trim() == itemCode);
+        final masterItem = allItemsMaster.cast<Map<String, dynamic>?>().firstWhere(
+          (item) => item?['ItemCode']?.toString().trim() == itemCode,
+          orElse: () => null,
+        );
         final itemName = masterItem?['ItemName']?.toString().trim() ?? 'N/A';
         final itemType = masterItem?['ItemType']?.toString().trim() ?? 'N/A';
 

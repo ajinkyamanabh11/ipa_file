@@ -5,7 +5,6 @@ import '../services/CsvDataServices.dart'; // Corrected service name import
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
 import 'dart:developer';
-import 'dart:isolate';
 
 class ProfitReportController extends GetxController {
   final drive = Get.find<GoogleDriveService>();
@@ -294,12 +293,15 @@ class ProfitReportController extends GetxController {
         }
 
         if (potentialMatches.isNotEmpty) {
-          matchingDetail = potentialMatches.firstWhereOrNull((detail) {
-            final itemDetailTxtPkg = detail['txt_pkg']?.toString().trim() ?? '';
-            final itemDetailCmbUnit = detail['cmb_unit']?.toString().trim() ?? '';
-            final itemDetailPacking = _normalizePacking('$itemDetailTxtPkg$itemDetailCmbUnit');
-            return itemDetailPacking == salesPacking;
-          });
+          matchingDetail = potentialMatches.cast<Map<String, dynamic>?>().firstWhere(
+            (detail) {
+              final itemDetailTxtPkg = detail?['txt_pkg']?.toString().trim() ?? '';
+              final itemDetailCmbUnit = detail?['cmb_unit']?.toString().trim() ?? '';
+              final itemDetailPacking = _normalizePacking('$itemDetailTxtPkg$itemDetailCmbUnit');
+              return itemDetailPacking == salesPacking;
+            },
+            orElse: () => null,
+          );
         }
 
         final String calculatedPacking = (matchingDetail != null)
@@ -499,13 +501,14 @@ class ProfitReportController extends GetxController {
         }
 
         if (potentialMatches.isNotEmpty) {
-          matchingDetail = potentialMatches.firstWhereOrNull(
-                  (detail) {
-                final itemDetailTxtPkg = detail['txt_pkg']?.toString().trim() ?? '';
-                final itemDetailCmbUnit = detail['cmb_unit']?.toString().trim() ?? '';
-                final itemDetailPacking = _normalizePacking('$itemDetailTxtPkg$itemDetailCmbUnit');
-                return itemDetailPacking == salesPacking;
-              }
+          matchingDetail = potentialMatches.cast<Map<String, dynamic>?>().firstWhere(
+            (detail) {
+              final itemDetailTxtPkg = detail?['txt_pkg']?.toString().trim() ?? '';
+              final itemDetailCmbUnit = detail?['cmb_unit']?.toString().trim() ?? '';
+              final itemDetailPacking = _normalizePacking('$itemDetailTxtPkg$itemDetailCmbUnit');
+              return itemDetailPacking == salesPacking;
+            },
+            orElse: () => null,
           );
         }
 

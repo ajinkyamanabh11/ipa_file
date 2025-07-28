@@ -2,7 +2,6 @@
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'dart:developer';
-import 'dart:isolate';
 
 import '../constants/paths.dart';
 import 'google_drive_service.dart';

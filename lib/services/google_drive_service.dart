@@ -62,7 +62,7 @@ class GoogleDriveService extends GetxService {
     
     try {
       // First, get file metadata to check size
-      final fileMetadata = await api.files.get(id);
+      final fileMetadata = await api.files.get(id) as drive.File;
       final fileSize = int.tryParse(fileMetadata.size ?? '0') ?? 0;
       
       // Check if file is too large
@@ -123,7 +123,7 @@ class GoogleDriveService extends GetxService {
   /// Get file size without downloading
   Future<int> getFileSize(String id) async {
     final api = await _api();
-    final fileMetadata = await api.files.get(id);
+    final fileMetadata = await api.files.get(id) as drive.File;
     return int.tryParse(fileMetadata.size ?? '0') ?? 0;
   }
 
@@ -155,12 +155,12 @@ class GoogleDriveService extends GetxService {
   Future<String> downloadCsvWithProgress(
     String id, 
     {Function(double)? onProgress}
-  ) async {
+      ) async {
     final api = await _api();
     
     try {
       // Get file size first
-      final fileInfo = await api.files.get(id);
+      final fileInfo = await api.files.get(id) as drive.File;
       final fileSize = int.tryParse(fileInfo.size ?? '0') ?? 0;
       
       if (fileSize > _maxFileSize) {
