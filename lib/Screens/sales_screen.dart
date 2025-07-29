@@ -65,8 +65,11 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
       }
     });
 
-    // Manually trigger animation once initially if data is already loaded (e.g., from cache)
+    // Load sales data when screen is accessed (lazy loading)
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Trigger data loading when screen is accessed
+      sc.fetchSales();
+      
       if (_animationController != null) {
         if (!sc.isLoading.value && sc.error.value == null) {
           _animationController!.forward(from: 0.0);

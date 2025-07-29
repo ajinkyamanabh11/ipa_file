@@ -46,60 +46,21 @@ class CustomerLedgerController extends GetxController {
   @override
   Future<void> onInit() async {
     super.onInit();
-    // Listen to sign-in status changes
-    _googleSignInController.user.listen((account) {
-      if (account != null) {
-        log('👤 CustomerLedgerController: Google user signed in. Loading data...');
-        requiresSignIn(false);
-        _load(); // Reload data if signed in after being signed out
-      } else {
-        log('👤 CustomerLedgerController: Google user signed out.');
-        if (!isLoading.value) {
-          requiresSignIn(true);
-          error.value = 'Google Sign-In is required to access data.';
-          // Clear existing data when sign-out/failure occurs
-          accounts.clear();
-          transactions.clear();
-          customerInfo.clear();
-          supplierInfo.clear();
-          debtors.clear();
-          creditors.clear();
-        }
-      }
-    });
-
-    // Initial load attempt based on current sign-in status
-    // Now just trigger a load, CsvDataService will handle initial download/cache logic
-    if (_googleSignInController.isSignedIn) {
-      log('👤 CustomerLedgerController: Already signed in on init. Loading data...');
-      _load();
-    } else {
-      log('👤 CustomerLedgerController: Not signed in on init. Awaiting sign-in.');
-      requiresSignIn(true);
-      error.value = 'Please sign in to your Google Account to load data.';
-    }
+    log('[CustomerLedgerController] Initializing customer ledger controller (lazy loading - no automatic data load)');
+    // Removed automatic data loading - data will be loaded when loadCustomerLedger() is called
+    // await loadCustomerLedger(); // REMOVED - implementing lazy loading
   }
 
-  // refreshDebtors will now force a refresh of the underlying CSVs
-  Future<void> refreshDebtors() async => _load(silent: true, forceRefreshCsv: true);
-  Future<void> loadData() => _load();
-
-  // ───────────── loader ─────────────
-  Future<void> _load({bool silent = false, bool forceRefreshCsv = false}) async {
-    if (!_googleSignInController.isSignedIn) {
-      log('🚫 CustomerLedgerController: Not signed in. Cannot load data.');
-      error.value = 'Google Sign-In is required to access data.';
-      requiresSignIn(true);
-      return;
-    }
+  /// Public method to load customer ledger data.
+  Future<void> loadCustomerLedger({bool forceRefreshCsv = false}) async {
+    log('[CustomerLedgerController] Loading customer ledger data...');
+    isLoading.value = true;
+    error.value = null;
 
     try {
-      if (!silent) isLoading(true);
-      error.value = null;
-      requiresSignIn(false);
-
-      // 🔴 CRITICAL CHANGE: Load all necessary CSVs via CsvDataService
-      await _csvDataService.loadAllCsvs(forceDownload: forceRefreshCsv);
+      // Load only customer/supplier and account data on demand
+      await _csvDataService.loadCustomerSupplierData(forceDownload: forceRefreshCsv);
+      await _csvDataService.loadAccountData(forceDownload: forceRefreshCsv);
 
       // Check if the necessary CSVs from CsvDataService are available
       if (_csvDataService.accountMasterCsv.value.isEmpty ||
@@ -166,6 +127,10 @@ class CustomerLedgerController extends GetxController {
       log('CustomerLedgerController: Loading finished. isLoading: ${isLoading.value}');
     }
   }
+
+  // refreshDebtors will now force a refresh of the underlying CSVs
+  Future<void> refreshDebtors() async => loadCustomerLedger(forceRefreshCsv: true);
+  Future<void> loadData() => loadCustomerLedger();
 
   // ───────────── outstanding lists ─────────────
   void _rebuildOutstanding() {

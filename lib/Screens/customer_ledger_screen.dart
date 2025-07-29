@@ -38,6 +38,11 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
     scrollCtrl.addListener(() {
       showFab.value = scrollCtrl.offset > 300;
     });
+
+    // Load customer ledger data when screen is accessed (lazy loading)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ctrl.loadCustomerLedger();
+    });
   }
 
   @override

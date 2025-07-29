@@ -95,9 +95,9 @@ class SalesController extends GetxController with BaseRemoteController {
   @override
   Future<void> onInit() async {
     super.onInit();
-    log('[SalesController] Initializing and loading sales data...');
-    // Guard ensures that the async operation is handled safely (e.g., preventing multiple calls).
-    guard(() => _loadSales(forceRefresh: true));
+    log('[SalesController] Initializing sales controller (lazy loading - no automatic data load)');
+    // Removed automatic data loading - data will be loaded when fetchSales() is called
+    // guard(() => _loadSales(forceRefresh: true)); // REMOVED - implementing lazy loading
   }
 
   /// Public method to trigger fetching sales data, with an option to force a fresh download.
@@ -106,8 +106,9 @@ class SalesController extends GetxController with BaseRemoteController {
   /// Private method to load and process sales data from multiple CSVs.
   Future<void> _loadSales({bool forceRefresh = false}) async {
     try {
-      // 1. Load all necessary CSVs from Google Drive (or cache).
-      await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
+      // 1. Load only the sales-related CSVs on demand
+      await _csvDataService.loadSalesData(forceDownload: forceRefresh);
+      await _csvDataService.loadItemData(forceDownload: forceRefresh); // Needed for item details in sales
 
       // Get the raw CSV string content from the service.
       final String salesMasterCsv = _csvDataService.salesMasterCsv.value;
@@ -153,7 +154,7 @@ class SalesController extends GetxController with BaseRemoteController {
       );
       final Map<String, List<SalesItemDetail>> billNoToDetails = {};
       for (var detail in salesDetailsMaps) {
-        final billNo = detail['Billno']?.toString() ?? '';
+        final billNo = detail['BillNo']?.toString() ?? '';
         if (billNo.isEmpty) {
           log('⚠️ SalesController: Skipping SalesInvoiceDetails entry with empty BillNo.');
           continue; // Skip entries without a valid BillNo
@@ -190,7 +191,7 @@ class SalesController extends GetxController with BaseRemoteController {
       final List<Map<String, dynamic>> salesMasterMaps = CsvUtils.toMaps(
         salesMasterCsv,
         stringColumns: [
-          'Billno',
+          'BillNo',
           'invoicedate', // Keep as string for parsing
           'entrydate',   // Keep as string for parsing
         ],
@@ -198,7 +199,7 @@ class SalesController extends GetxController with BaseRemoteController {
 
       final List<SalesEntry> processedSales = [];
       for (var m in salesMasterMaps) {
-        final String billNo = m['Billno']?.toString() ?? '';
+        final String billNo = m['BillNo']?.toString() ?? '';
         final String accountName = m['accountname']?.toString() ?? '';
         final String paymentMode = m['paymentmode']?.toString() ?? '';
         final double totalBillAmount = double.tryParse('${m['totalbillamount']}') ?? 0.0;

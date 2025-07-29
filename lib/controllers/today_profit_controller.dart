@@ -18,11 +18,13 @@ class TodayProfitController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    // Load today's profit as soon as the controller is initialized
-    loadTodayProfit();
+    log('[TodayProfitController] Initializing today profit controller (lazy loading - no automatic data load)');
+    // Removed automatic data loading - data will be loaded when calculateTodayProfit() is called
+    // calculateTodayProfit(); // REMOVED - implementing lazy loading
   }
 
-  Future<void> loadTodayProfit() async {
+  /// Calculate today's profit - this will load data on demand
+  Future<void> calculateTodayProfit() async {
     isLoadingTodayProfit.value = true;
     todayTotalProfit.value = 0.0; // Reset before loading
 
@@ -30,9 +32,11 @@ class TodayProfitController extends GetxController {
     log('📆 TodayProfitController: Loading today\'s profit for $today');
 
     try {
-      // 🔴 CRITICAL CHANGE: Use the centralized CsvDataService to get CSV data.
-      // Force download here to ensure the dashboard profit is always fresh.
-      await _csvDataService.loadAllCsvs(forceDownload: true);
+      log('[TodayProfitController] Loading data for today profit calculation...');
+      
+      // Load sales and item data on demand (profit calculation needs both)
+      await _csvDataService.loadSalesData(forceDownload: true);
+      await _csvDataService.loadItemData(forceDownload: true);
 
       final masterCsv = _csvDataService.salesMasterCsv.value;
       final detailsCsv = _csvDataService.salesDetailsCsv.value;
@@ -151,6 +155,9 @@ class TodayProfitController extends GetxController {
       log('TodayProfitController: Loading finished. isLoadingTodayProfit: ${isLoadingTodayProfit.value}');
     }
   }
+
+  // Alias for backward compatibility
+  Future<void> loadTodayProfit() => calculateTodayProfit();
 
   String _normalizePacking(String packing) {
     if (packing == null || packing.isEmpty) return '';

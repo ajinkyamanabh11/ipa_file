@@ -42,7 +42,8 @@ class StockReportController extends GetxController {
     ever(sortAscending, (_) => _applyFilter()); // Trigger filter on sort order change
     ever(currentPage, (_) => _updateDisplayedData()); // Update displayed data when page changes
 
-    loadStockReport(); // Initial data load
+    // Removed automatic data loading - data will be loaded when loadStockReport() is called
+    // loadStockReport(); // REMOVED - implementing lazy loading
   }
 
   /// Public method to set the column to sort by.
@@ -96,7 +97,8 @@ class StockReportController extends GetxController {
     processingProgress.value = 0.0;
 
     try {
-      await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
+      // Load only item-related data on demand
+      await _csvDataService.loadItemData(forceDownload: forceRefresh);
 
       if (_csvDataService.itemDetailCsv.value.isEmpty || _csvDataService.itemMasterCsv.value.isEmpty) {
         errorMessage.value = 'Required CSV data (ItemMaster or ItemDetail) is empty. Please ensure files are on Google Drive.';
