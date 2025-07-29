@@ -7,7 +7,6 @@ import '../controllers/stock_report_controller.dart';
 import '../widget/rounded_search_field.dart';
 import '../widget/animated_Dots_LoadingText.dart';
 import '../widget/custom_app_bar.dart';
-import 'dart:developer'; // Import for the log function
 
 class StockScreen extends StatefulWidget {
   const StockScreen({super.key});
@@ -47,12 +46,13 @@ class _StockScreenState extends State<StockScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: _buildSearchField(),
-          ),
-          // New: Sort options
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
-            child: _buildSortOptions(context),
+            child: Column( // Use a Column for search and dropdown
+              children: [
+                _buildSearchField(),
+                const SizedBox(height: 10), // Space between search and dropdown
+                _buildItemTypeFilterDropdown(context), // New: ItemType filter dropdown
+              ],
+            ),
           ),
           const SizedBox(height: 10),
           Expanded( // Expanded takes the remaining vertical space
@@ -97,7 +97,7 @@ class _StockScreenState extends State<StockScreen> {
                     children: [
                       Icon(Icons.inventory_2_outlined, size: 50, color: Colors.grey),
                       SizedBox(height: 10),
-                      Text('No items with stock found or matching search.', style: TextStyle(color: Colors.grey)),
+                      Text('No items with stock found or matching search/filters.', style: TextStyle(color: Colors.grey)), // Updated message
                       Text('Ensure ItemDetail.csv has data and "Currentstock" > 0.', style: TextStyle(color: Colors.grey)),
                     ],
                   ),
@@ -165,71 +165,39 @@ class _StockScreenState extends State<StockScreen> {
     );
   }
 
-  // New: Widget to build sort options
-  Widget _buildSortOptions(BuildContext context) {
-    final Color primaryColor = Theme.of(context).primaryColor;
-    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
-    final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
+  Widget _buildItemTypeFilterDropdown(BuildContext context) {
+    return Obx(() {
+      final uniqueItemTypes = stockReportController.getUniqueItemTypes();
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12.0),
 
-    return Obx(() => Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        // Sort by Item Name
-        ChoiceChip(
-          label: Text('Item Name'),
-          selected: stockReportController.sortByColumn.value == 'Item Name',
-          onSelected: (selected) {
-            if (selected) {
-              stockReportController.setSortColumn('Item Name');
-            } else {
-              // Optionally, handle deselection if you want a 'no sort' state
-              // For simplicity, we'll just toggle if already selected
-              stockReportController.toggleSortOrder();
-            }
-          },
-          selectedColor: primaryColor,
-          labelStyle: TextStyle(
-            color: stockReportController.sortByColumn.value == 'Item Name'
-                ? Theme.of(context).colorScheme.onPrimary
-                : onSurfaceColor,
+        child: DropdownButtonHideUnderline(
+          child: DropdownButtonFormField<String>(
+            isExpanded: true,
+            value: stockReportController.itemTypeFilter.value,
+            onChanged: (String? newValue) {
+              if (newValue != null) {
+                stockReportController.itemTypeFilter.value = newValue;
+              }
+            },
+            decoration: const InputDecoration(
+              contentPadding: EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+              border: InputBorder.none, // No border needed as container handles it
+              prefixIcon: Icon(Icons.category),
+              labelText: 'Filter by Item Type',
+            ),
+            items: uniqueItemTypes.map<DropdownMenuItem<String>>((String value) {
+              return DropdownMenuItem<String>(
+                value: value,
+                child: Text(value),
+              );
+            }).toList(),
           ),
-          backgroundColor: surfaceVariantColor,
         ),
-        const SizedBox(width: 8),
-        // Sort by Current Stock
-        ChoiceChip(
-          label: Text('Current Stock'),
-          selected: stockReportController.sortByColumn.value == 'Current Stock',
-          onSelected: (selected) {
-            if (selected) {
-              stockReportController.setSortColumn('Current Stock');
-            } else {
-              stockReportController.toggleSortOrder();
-            }
-          },
-          selectedColor: primaryColor,
-          labelStyle: TextStyle(
-            color: stockReportController.sortByColumn.value == 'Current Stock'
-                ? Theme.of(context).colorScheme.onPrimary
-                : onSurfaceColor,
-          ),
-          backgroundColor: surfaceVariantColor,
-        ),
-        const SizedBox(width: 8),
-        // Toggle sort order (Asc/Desc)
-        IconButton(
-          icon: Icon(
-            stockReportController.sortAscending.value ? Icons.arrow_upward : Icons.arrow_downward,
-            color: primaryColor, // Highlight sort direction
-          ),
-          tooltip: stockReportController.sortAscending.value ? 'Sort Ascending' : 'Sort Descending',
-          onPressed: () {
-            stockReportController.toggleSortOrder();
-          },
-        ),
-      ],
-    ));
+      );
+    });
   }
+
 
   Widget _buildTotalStockCard(BuildContext context) {
     final NumberFormat formatter = NumberFormat('#,##0.##');
@@ -293,13 +261,6 @@ class StockDataSource extends DataTableSource {
     final Color surfaceColor = Theme.of(context).colorScheme.surface;
     final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
 
-    // Get the formatted stock value
-    final formattedStock = _stockFormatter.format(row['Current Stock'] ?? 0);
-    final itemType = row['Type']?.toString() ?? '';
-
-    // Print to console using log() from dart:developer
-    log(formattedStock);//
-
     return DataRow.byIndex(
       index: index,
       color: MaterialStateProperty.all(index.isEven ? surfaceColor : surfaceVariantColor),
@@ -309,8 +270,7 @@ class StockDataSource extends DataTableSource {
         DataCell(Text(row['Item Name']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
         DataCell(Text(row['Batch No']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
         DataCell(Text(row['Package']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
-        DataCell(Text(formattedStock, style: TextStyle(color: onSurfaceColor))),
-        // Display formatted stock
+        DataCell(Text(_stockFormatter.format(row['Current Stock'] ?? 0), style: TextStyle(color: onSurfaceColor))),
         DataCell(Text(row['Type']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
       ],
     );
