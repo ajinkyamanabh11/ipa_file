@@ -14,18 +14,34 @@ class CsvDataService extends GetxController {
   final GoogleDriveService drive = Get.find<GoogleDriveService>();
   final BackgroundProcessor _backgroundProcessor = Get.find<BackgroundProcessor>();
   final GetStorage _box = GetStorage();
-  Future<void>? _loadingFuture;
+  
+  // Track which CSVs have been loaded
+  final Map<String, bool> _loadedCsvs = {};
+  final Map<String, Future<void>?> _loadingFutures = {};
+  
   bool _hasDownloadedOnce = false;
 
-  static const String _salesMasterCacheKey = 'salesMasterCsv';
-  static const String _salesDetailsCacheKey = 'salesDetailsCsv';
-  static const String _itemMasterCacheKey = 'itemMasterCsv';
-  static const String _itemDetailCacheKey = 'itemDetailCsv';
+  // Public constants for CSV keys
+  static const String salesMasterCacheKey = 'salesMasterCsv';
+  static const String salesDetailsCacheKey = 'salesDetailsCsv';
+  static const String itemMasterCacheKey = 'itemMasterCsv';
+  static const String itemDetailCacheKey = 'itemDetailCsv';
 
-  static const String _accountMasterCacheKey = 'accountMasterCsv';
-  static const String _allAccountsCacheKey = 'allAccountsCsv';
-  static const String _customerInfoCacheKey = 'customerInfoCsv';
-  static const String _supplierInfoCacheKey = 'supplierInfoCsv';
+  static const String accountMasterCacheKey = 'accountMasterCsv';
+  static const String allAccountsCacheKey = 'allAccountsCsv';
+  static const String customerInfoCacheKey = 'customerInfoCsv';
+  static const String supplierInfoCacheKey = 'supplierInfoCsv';
+
+  // Private constants for internal use
+  static const String _salesMasterCacheKey = salesMasterCacheKey;
+  static const String _salesDetailsCacheKey = salesDetailsCacheKey;
+  static const String _itemMasterCacheKey = itemMasterCacheKey;
+  static const String _itemDetailCacheKey = itemDetailCacheKey;
+
+  static const String _accountMasterCacheKey = accountMasterCacheKey;
+  static const String _allAccountsCacheKey = allAccountsCacheKey;
+  static const String _customerInfoCacheKey = customerInfoCacheKey;
+  static const String _supplierInfoCacheKey = supplierInfoCacheKey;
 
   static const String _lastCsvSyncTimestampKey = 'lastCsvSync';
 
@@ -54,8 +70,26 @@ class CsvDataService extends GetxController {
   void onInit() {
     super.onInit();
     _startMemoryMonitoring();
-    // Potentially load from cache on init, but don't force download
-    // loadAllCsvs(forceDownload: false); // Or load specific ones if needed
+    // Initialize loading status for all CSVs
+    _initializeCsvStatus();
+  }
+
+  void _initializeCsvStatus() {
+    final csvKeys = [
+      _salesMasterCacheKey,
+      _salesDetailsCacheKey,
+      _itemMasterCacheKey,
+      _itemDetailCacheKey,
+      _accountMasterCacheKey,
+      _allAccountsCacheKey,
+      _customerInfoCacheKey,
+      _supplierInfoCacheKey,
+    ];
+    
+    for (final key in csvKeys) {
+      _loadedCsvs[key] = false;
+      _loadingFutures[key] = null;
+    }
   }
 
   /// Monitor memory usage and trigger cleanup if needed
@@ -77,10 +111,12 @@ class CsvDataService extends GetxController {
     // Clear non-essential cached data
     if (accountMasterCsv.value.isNotEmpty) {
       accountMasterCsv.value = '';
+      _loadedCsvs[_accountMasterCacheKey] = false;
       log('🧹 CsvDataService: Cleared accountMasterCsv from memory');
     }
     if (allAccountsCsv.value.isNotEmpty) {
       allAccountsCsv.value = '';
+      _loadedCsvs[_allAccountsCacheKey] = false;
       log('🧹 CsvDataService: Cleared allAccountsCsv from memory');
     }
 
@@ -92,6 +128,142 @@ class CsvDataService extends GetxController {
   void _requestGarbageCollection() {
     // This is a hint to the Dart VM to consider garbage collection
     List.generate(100, (index) => []).clear();
+  }
+
+  /// Load a specific CSV on-demand
+  Future<void> loadCsv(String csvKey, {bool forceDownload = false}) async {
+    log('🔄 CsvDataService: loadCsv called for $csvKey (forceDownload: $forceDownload)');
+
+    // If already loaded and not forcing download, return immediately
+    if (!forceDownload && _loadedCsvs[csvKey] == true) {
+      log('✅ CsvDataService: $csvKey already loaded, returning cached data');
+      return;
+    }
+
+    // If already loading, wait for the existing future
+    if (_loadingFutures[csvKey] != null) {
+      log('⏳ CsvDataService: $csvKey already loading, awaiting existing future...');
+      await _loadingFutures[csvKey];
+      return;
+    }
+
+    // Start loading
+    _loadingFutures[csvKey] = _loadSingleCsv(csvKey, forceDownload: forceDownload);
+    await _loadingFutures[csvKey];
+    _loadingFutures[csvKey] = null;
+  }
+
+  /// Load multiple CSVs on-demand
+  Future<void> loadCsvs(List<String> csvKeys, {bool forceDownload = false}) async {
+    log('🔄 CsvDataService: loadCsvs called for ${csvKeys.join(', ')} (forceDownload: $forceDownload)');
+    
+    // Filter out already loaded CSVs (unless force download)
+    final csvsToLoad = csvKeys.where((key) => 
+      forceDownload || _loadedCsvs[key] != true
+    ).toList();
+    
+    if (csvsToLoad.isEmpty) {
+      log('✅ CsvDataService: All requested CSVs already loaded');
+      return;
+    }
+
+    // Load CSVs in parallel
+    await Future.wait(
+      csvsToLoad.map((key) => loadCsv(key, forceDownload: forceDownload))
+    );
+  }
+
+  /// Load a single CSV file
+  Future<void> _loadSingleCsv(String csvKey, {required bool forceDownload}) async {
+    try {
+      final csvConfig = _getCsvConfig(csvKey);
+      if (csvConfig == null) {
+        log('❌ CsvDataService: Unknown CSV key: $csvKey');
+        return;
+      }
+
+      final lastSync = _box.read<int?>(_lastCsvSyncTimestampKey);
+      final isCacheValid = lastSync != null &&
+          DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastSync)) < _cacheDuration;
+
+      bool needsDownload = forceDownload;
+      
+      if (!forceDownload) {
+        if (!isCacheValid) {
+          log('💡 CsvDataService: Cache expired for $csvKey. Will download.');
+          needsDownload = true;
+        } else {
+          final cached = _box.read(csvKey);
+          if (cached == null || cached.isEmpty) {
+            log('⚠️ CsvDataService: Missing cache for key: $csvKey');
+            needsDownload = true;
+          } else {
+            log('✅ CsvDataService: Loading $csvKey from cache.');
+            _populateReactiveVarFromCache(csvKey, cached);
+            _loadedCsvs[csvKey] = true;
+            return;
+          }
+        }
+      }
+
+      if (needsDownload) {
+        await _downloadSingleCsv(csvConfig);
+        await _box.write(_lastCsvSyncTimestampKey, DateTime.now().millisecondsSinceEpoch);
+        _loadedCsvs[csvKey] = true;
+        log('📦 CsvDataService: $csvKey downloaded and cached.');
+      }
+    } catch (e, st) {
+      log('❌ CsvDataService: Error loading $csvKey: $e\n$st');
+      _loadedCsvs[csvKey] = false;
+      rethrow;
+    }
+  }
+
+  /// Get CSV configuration by key
+  Map<String, dynamic>? _getCsvConfig(String csvKey) {
+    final csvConfigs = [
+      {'key': _salesMasterCacheKey, 'filename': 'SalesInvoiceMaster.csv', 'priority': 1},
+      {'key': _salesDetailsCacheKey, 'filename': 'SalesInvoiceDetails.csv', 'priority': 1},
+      {'key': _itemMasterCacheKey, 'filename': 'ItemMaster.csv', 'priority': 1},
+      {'key': _itemDetailCacheKey, 'filename': 'ItemDetail.csv', 'priority': 1},
+      {'key': _accountMasterCacheKey, 'filename': 'AccountMaster.csv', 'priority': 2},
+      {'key': _allAccountsCacheKey, 'filename': 'AllAccounts.csv', 'priority': 2},
+      {'key': _customerInfoCacheKey, 'filename': 'CustomerInformation.csv', 'priority': 2},
+      {'key': _supplierInfoCacheKey, 'filename': 'SupplierInformation.csv', 'priority': 2},
+    ];
+    
+    return csvConfigs.firstWhere(
+      (config) => config['key'] == csvKey,
+      orElse: () => null,
+    );
+  }
+
+  /// Download a single CSV file
+  Future<void> _downloadSingleCsv(Map<String, dynamic> csvConfig) async {
+    try {
+      if (memoryUsageMB.value > _maxMemoryUsageMB * 0.8 && csvConfig['priority'] > 1) {
+        log('⚠️ CsvDataService: Skipping ${csvConfig['filename']} due to memory constraints');
+        return;
+      }
+
+      final path = await SoftAgriPath.build(drive);
+      final folderId = await drive.folderId(path);
+      final fileId = await drive.fileId(csvConfig['filename'], folderId);
+      final csvData = await drive.downloadCsv(fileId);
+
+      final String key = csvConfig['key'];
+      final double estimatedSize = (csvData.length * 2) / (1024 * 1024);
+
+      memoryUsageMB.value += estimatedSize;
+      _populateReactiveVarFromCache(key, csvData);
+      await _box.write(key, csvData);
+
+      log('📥 CsvDataService: Downloaded $key (${estimatedSize.toStringAsFixed(1)}MB)');
+
+    } catch (e, st) {
+      log('❌ CsvDataService: Failed to download ${csvConfig['filename']}: $e\n$st');
+      rethrow;
+    }
   }
 
   /// Loads all required CSVs with memory-efficient processing
@@ -106,133 +278,19 @@ class CsvDataService extends GetxController {
       return;
     }
 
-    // If another load is in progress
-    if (_loadingFuture != null) {
-      if (forceDownload) {
-        log('⚠️ CsvDataService: Force download requested — waiting for current load to finish, then restarting...');
-        try {
-          await _loadingFuture;
-        } catch (_) {
-          // Swallow errors from previous future
-        }
-        // Clear and re-run
-        _loadingFuture = null;
-      } else {
-        log('⏳ CsvDataService: loadAllCsvs already in progress – awaiting existing future...');
-        return _loadingFuture!;
-      }
-    }
-
-    log('🚀 CsvDataService: Starting CSV loading (forceDownload: $forceDownload)...');
-    _loadingFuture = _loadCsvsInternal(forceDownload: forceDownload);
-    await _loadingFuture;
-    _loadingFuture = null;
-    _hasDownloadedOnce = true;
-  }
-
-  Future<void> _loadCsvsInternal({required bool forceDownload}) async {
-    final lastSync = _box.read<int?>(_lastCsvSyncTimestampKey);
-    final isCacheValid = lastSync != null &&
-        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastSync)) < _cacheDuration;
-
-    final List<Map<String, dynamic>> csvConfigs = [
-      {'key': _salesMasterCacheKey, 'filename': 'SalesInvoiceMaster.csv', 'priority': 1},
-      {'key': _salesDetailsCacheKey, 'filename': 'SalesInvoiceDetails.csv', 'priority': 1},
-      {'key': _itemMasterCacheKey, 'filename': 'ItemMaster.csv', 'priority': 1},
-      {'key': _itemDetailCacheKey, 'filename': 'ItemDetail.csv', 'priority': 1},
-      {'key': _accountMasterCacheKey, 'filename': 'AccountMaster.csv', 'priority': 2},
-      {'key': _allAccountsCacheKey, 'filename': 'AllAccounts.csv', 'priority': 2},
-      {'key': _customerInfoCacheKey, 'filename': 'CustomerInformation.csv', 'priority': 2},
-      {'key': _supplierInfoCacheKey, 'filename': 'SupplierInformation.csv', 'priority': 2},
+    final List<String> allCsvKeys = [
+      _salesMasterCacheKey,
+      _salesDetailsCacheKey,
+      _itemMasterCacheKey,
+      _itemDetailCacheKey,
+      _accountMasterCacheKey,
+      _allAccountsCacheKey,
+      _customerInfoCacheKey,
+      _supplierInfoCacheKey,
     ];
 
-    bool needsDownload = forceDownload;
-    if (!forceDownload) {
-      if (!isCacheValid) {
-        log('💡 CsvDataService: Cache expired. Will download.');
-        needsDownload = true;
-      } else {
-        for (final config in csvConfigs.where((c) => c['priority'] == 1)) {
-          final cached = _box.read(config['key']);
-          if (cached == null || cached.isEmpty) {
-            log('⚠️ CsvDataService: Missing essential cache for key: ${config['key']}');
-            needsDownload = true;
-            break;
-          }
-        }
-
-        if (!needsDownload) {
-          log('✅ CsvDataService: Loading CSVs from cache.');
-          for (final config in csvConfigs) {
-            final cached = _box.read(config['key']);
-            if (cached != null && cached.isNotEmpty) {
-              _populateReactiveVarFromCache(config['key'], cached);
-            }
-          }
-          return;
-        }
-      }
-    }
-
-    if (needsDownload) {
-      try {
-        final path = await SoftAgriPath.build(drive);
-        final folderId = await drive.folderId(path);
-        await _downloadCsvsWithMemoryManagement(csvConfigs, folderId);
-        await _box.write(_lastCsvSyncTimestampKey, DateTime.now().millisecondsSinceEpoch);
-        log('📦 CsvDataService: All CSVs downloaded and cached.');
-      } catch (e, st) {
-        log('❌ CsvDataService: Error in _loadCsvsInternal: $e\n$st');
-        _clearAllReactiveVars();
-      }
-    }
-  }
-
-
-  /// Download CSVs with memory management and priority-based loading
-  Future<void> _downloadCsvsWithMemoryManagement(
-      List<Map<String, dynamic>> csvConfigs,
-      String folderId,
-      ) async {
-    csvConfigs.sort((a, b) => a['priority'].compareTo(b['priority']));
-
-    for (final config in csvConfigs) {
-      try {
-        if (memoryUsageMB.value > _maxMemoryUsageMB * 0.8 && config['priority'] > 1) {
-          log('⚠️ CsvDataService: Skipping ${config['filename']} due to memory constraints');
-          continue;
-        }
-
-        final fileId = await drive.fileId(config['filename'], folderId);
-        final csvData = await drive.downloadCsv(fileId);
-
-        // 💡 Offload parsing to background processor with progress tracking
-        final result = await _backgroundProcessor.processCsvData(
-          csvData: csvData,
-          taskName: 'Processing ${config['filename']}',
-          shouldParse: false, // We'll store raw CSV and parse on demand
-          onProgress: (progress) {
-            log('📊 CsvDataService: Processing ${config['filename']} - ${(progress * 100).toStringAsFixed(1)}%');
-          },
-        );
-
-        final String key = config['key'];
-        final String parsedCsv = csvData; // Store raw CSV for now
-        final double estimatedSize = (csvData.length * 2) / (1024 * 1024);
-
-        memoryUsageMB.value += estimatedSize;
-        _populateReactiveVarFromCache(key, parsedCsv);
-        await _box.write(key, parsedCsv);
-
-        log('📥 CsvDataService: Downloaded $key (${estimatedSize.toStringAsFixed(1)}MB)');
-
-        await Future.delayed(Duration(milliseconds: 50)); // Reduced delay
-
-      } catch (e, st) {
-        log('❌ CsvDataService: Failed to download ${config['filename']}: $e\n$st');
-        continue;
-      }
-    }
+    await loadCsvs(allCsvKeys, forceDownload: forceDownload);
+    _hasDownloadedOnce = true;
   }
 
   void _populateReactiveVarFromCache(String key, String? cachedData) {
@@ -346,5 +404,58 @@ class CsvDataService extends GetxController {
 
     memoryUsageMB.value = totalSize;
     return totalSize;
+  }
+
+  /// Check if a specific CSV is loaded
+  bool isCsvLoaded(String csvKey) {
+    return _loadedCsvs[csvKey] == true;
+  }
+
+  /// Get list of loaded CSVs
+  List<String> getLoadedCsvs() {
+    return _loadedCsvs.entries
+        .where((entry) => entry.value == true)
+        .map((entry) => entry.key)
+        .toList();
+  }
+
+  /// Get list of CSVs that are currently loading
+  List<String> getLoadingCsvs() {
+    return _loadingFutures.entries
+        .where((entry) => entry.value != null)
+        .map((entry) => entry.key)
+        .toList();
+  }
+
+  /// Clear specific CSV from memory
+  void clearCsvFromMemory(String csvKey) {
+    _loadedCsvs[csvKey] = false;
+    switch (csvKey) {
+      case _salesMasterCacheKey:
+        salesMasterCsv.value = '';
+        break;
+      case _salesDetailsCacheKey:
+        salesDetailsCsv.value = '';
+        break;
+      case _itemMasterCacheKey:
+        itemMasterCsv.value = '';
+        break;
+      case _itemDetailCacheKey:
+        itemDetailCsv.value = '';
+        break;
+      case _accountMasterCacheKey:
+        accountMasterCsv.value = '';
+        break;
+      case _allAccountsCacheKey:
+        allAccountsCsv.value = '';
+        break;
+      case _customerInfoCacheKey:
+        customerInfoCsv.value = '';
+        break;
+      case _supplierInfoCacheKey:
+        supplierInfoCsv.value = '';
+        break;
+    }
+    log('🧹 CsvDataService: Cleared $csvKey from memory');
   }
 }
