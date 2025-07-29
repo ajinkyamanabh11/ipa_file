@@ -3,11 +3,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'dart:developer'; // Import for the log function
+import 'dart:math' as math;
 import '../controllers/stock_report_controller.dart';
 import '../widget/rounded_search_field.dart';
 import '../widget/animated_Dots_LoadingText.dart';
 import '../widget/custom_app_bar.dart';
-import 'dart:developer'; // Import for the log function
 
 class StockScreen extends StatefulWidget {
   const StockScreen({super.key});

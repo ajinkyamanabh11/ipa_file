@@ -13,18 +13,21 @@ import '../controllers/sales_controller.dart';
 import '../controllers/theme_controller.dart';
 import '../services/CsvDataServices.dart';
 import '../services/google_drive_service.dart';
- // NEW IMPORT
+import '../services/performance_monitor_service.dart'; // NEW IMPORT
 
 class InitialBindings {
   static bool _done = false;
 
-  /// Call once from main.dart to register every global singleton.
+  /// Call once from main.dart to register every global singleton.
   static Future<void> ensure() async {
     if (_done) return;
     _done = true;
 
     // Initialize GetStorage before any controller that uses it
     await GetStorage.init(); // IMPORTANT: Initialize GetStorage here
+
+    // 🔍 NEW: Performance Monitor Service (first to monitor everything else)
+    Get.put<PerformanceMonitorService>(PerformanceMonitorService(), permanent: true);
 
     // 1️⃣ Google Sign‑in controller (never disposed)
     Get.put<GoogleSignInController>(GoogleSignInController(), permanent: true);

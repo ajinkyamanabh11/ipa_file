@@ -1,7 +1,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'dart:developer'; // For logging
+import 'dart:developer';
+import 'dart:async';
 
 import '../constants/paths.dart';
 import '../services/google_drive_service.dart';
@@ -91,6 +92,10 @@ class SalesController extends GetxController with BaseRemoteController {
 
   // Observable list to hold the processed sales data, now using the SalesEntry model.
   final sales = <SalesEntry>[].obs;
+  
+  // Performance optimization fields
+  Timer? _debounceTimer;
+  bool _isProcessing = false;
 
   @override
   Future<void> onInit() async {
@@ -100,11 +105,21 @@ class SalesController extends GetxController with BaseRemoteController {
     guard(() => _loadSales(forceRefresh: true));
   }
 
+  @override
+  void onClose() {
+    _debounceTimer?.cancel();
+    super.onClose();
+  }
+
   /// Public method to trigger fetching sales data, with an option to force a fresh download.
   Future<void> fetchSales({bool forceRefresh = false}) async => guard(() => _loadSales(forceRefresh: forceRefresh));
 
-  /// Private method to load and process sales data from multiple CSVs.
+  /// Private method to load and process sales data from multiple CSVs with optimizations.
   Future<void> _loadSales({bool forceRefresh = false}) async {
+    if (_isProcessing) return;
+    
+    _isProcessing = true;
+    
     try {
       // 1. Load all necessary CSVs from Google Drive (or cache).
       await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
@@ -129,33 +144,79 @@ class SalesController extends GetxController with BaseRemoteController {
         // Continue, but item names will be placeholders.
       }
 
-      log('⚡ SalesController: Starting data processing...');
+      log('⚡ SalesController: Starting optimized data processing...');
 
-      // 2. Parse ItemMaster.csv into a lookup map for efficient ItemName retrieval.
-      // Ensure 'Itemcode' and 'ItemName' are treated as strings to preserve their exact values.
-      final List<Map<String, dynamic>> itemMasterMaps = CsvUtils.toMaps(
-        itemMasterCsv,
-        stringColumns: ['ItemCode', 'ItemName'],
-      );
-      final Map<String, String> itemCodeToName = {
-        for (var item in itemMasterMaps)
-          (item['ItemCode']?.toString() ?? ''): (item['ItemName']?.toString() ?? '')
-      };
-      log('✅ SalesController: ItemMaster data parsed. Total items: ${itemMasterMaps.length}');
+      // Process data asynchronously to avoid blocking UI
+      await _processDataAsync(salesMasterCsv, salesInvoiceDetailsCsv, itemMasterCsv);
 
-      // 3. Parse SalesInvoiceDetails.csv and group details by BillNo.
-      // 'BillNo', 'Itemcode', 'batchno', 'Packing' are crucial identifiers and kept as strings.
-      final List<Map<String, dynamic>> salesDetailsMaps = CsvUtils.toMaps(
-        salesInvoiceDetailsCsv,
-        stringColumns: [
-          'BillNo', 'Itemcode', 'batchno', 'Packing',
-        ],
-      );
-      final Map<String, List<SalesItemDetail>> billNoToDetails = {};
-      for (var detail in salesDetailsMaps) {
+    } catch (e, st) {
+      log('[SalesController] ❌ Error loading sales data: $e\n$st');
+      sales.clear(); // Clear data on error
+    } finally {
+      log('[SalesController] Loading finished. isLoadingSales: false');
+      _isProcessing = false;
+    }
+  }
+
+  /// Optimized async data processing
+  Future<void> _processDataAsync(String salesMasterCsv, String salesInvoiceDetailsCsv, String itemMasterCsv) async {
+    // Process CSVs in parallel using async methods
+    final futures = [
+      CsvUtils.toMapsAsync(itemMasterCsv, stringColumns: ['ItemCode', 'ItemName']),
+      CsvUtils.toMapsAsync(salesInvoiceDetailsCsv, stringColumns: ['BillNo', 'Itemcode', 'batchno', 'Packing']),
+      CsvUtils.toMapsAsync(salesMasterCsv, stringColumns: ['Billno', 'invoicedate', 'entrydate']),
+    ];
+
+    final results = await Future.wait(futures);
+    final itemMasterMaps = results[0];
+    final salesDetailsMaps = results[1];
+    final salesMasterMaps = results[2];
+
+    log('✅ SalesController: Parallel CSV parsing completed');
+    log('   - ItemMaster: ${itemMasterMaps.length} items');
+    log('   - SalesDetails: ${salesDetailsMaps.length} details');
+    log('   - SalesMaster: ${salesMasterMaps.length} sales');
+
+    // Create efficient lookup maps
+    final itemCodeToName = <String, String>{};
+    for (var item in itemMasterMaps) {
+      final itemCode = item['ItemCode']?.toString() ?? '';
+      final itemName = item['ItemName']?.toString() ?? '';
+      if (itemCode.isNotEmpty) {
+        itemCodeToName[itemCode] = itemName;
+      }
+    }
+
+    // Process sales details in chunks to avoid blocking
+    final billNoToDetails = <String, List<SalesItemDetail>>{};
+    await _processSalesDetailsInChunks(salesDetailsMaps, itemCodeToName, billNoToDetails);
+
+    // Process sales master data in chunks
+    final processedSales = <SalesEntry>[];
+    await _processSalesMasterInChunks(salesMasterMaps, billNoToDetails, processedSales);
+
+    sales.value = processedSales; // Update the observable list
+    log('✅ SalesController: Sales data processed successfully with details. Total sales entries: ${sales.length}');
+  }
+
+  /// Process sales details in chunks to maintain UI responsiveness
+  Future<void> _processSalesDetailsInChunks(
+    List<Map<String, dynamic>> salesDetailsMaps,
+    Map<String, String> itemCodeToName,
+    Map<String, List<SalesItemDetail>> billNoToDetails,
+  ) async {
+    const chunkSize = 500;
+    
+    for (int i = 0; i < salesDetailsMaps.length; i += chunkSize) {
+      final endIndex = (i + chunkSize < salesDetailsMaps.length) 
+          ? i + chunkSize 
+          : salesDetailsMaps.length;
+      
+      final chunk = salesDetailsMaps.sublist(i, endIndex);
+      
+      for (var detail in chunk) {
         final billNo = detail['Billno']?.toString() ?? '';
         if (billNo.isEmpty) {
-          log('⚠️ SalesController: Skipping SalesInvoiceDetails entry with empty BillNo.');
           continue; // Skip entries without a valid BillNo
         }
 
@@ -184,20 +245,32 @@ class SalesController extends GetxController with BaseRemoteController {
         // Add the detail to the list for its corresponding BillNo.
         billNoToDetails.putIfAbsent(billNo, () => []).add(salesItemDetail);
       }
-      log('✅ SalesController: SalesInvoiceDetails data parsed and grouped. Number of BillNo groups: ${billNoToDetails.length}');
 
-      // 4. Process SalesInvoiceMaster.csv and combine with the grouped details.
-      final List<Map<String, dynamic>> salesMasterMaps = CsvUtils.toMaps(
-        salesMasterCsv,
-        stringColumns: [
-          'Billno',
-          'invoicedate', // Keep as string for parsing
-          'entrydate',   // Keep as string for parsing
-        ],
-      );
+      // Yield control periodically
+      if (i % (chunkSize * 2) == 0) {
+        await Future.delayed(Duration.zero);
+      }
+    }
+    
+    log('✅ SalesController: SalesInvoiceDetails processed in chunks. BillNo groups: ${billNoToDetails.length}');
+  }
 
-      final List<SalesEntry> processedSales = [];
-      for (var m in salesMasterMaps) {
+  /// Process sales master data in chunks
+  Future<void> _processSalesMasterInChunks(
+    List<Map<String, dynamic>> salesMasterMaps,
+    Map<String, List<SalesItemDetail>> billNoToDetails,
+    List<SalesEntry> processedSales,
+  ) async {
+    const chunkSize = 500;
+    
+    for (int i = 0; i < salesMasterMaps.length; i += chunkSize) {
+      final endIndex = (i + chunkSize < salesMasterMaps.length) 
+          ? i + chunkSize 
+          : salesMasterMaps.length;
+      
+      final chunk = salesMasterMaps.sublist(i, endIndex);
+      
+      for (var m in chunk) {
         final String billNo = m['Billno']?.toString() ?? '';
         final String accountName = m['accountname']?.toString() ?? '';
         final String paymentMode = m['paymentmode']?.toString() ?? '';
@@ -231,14 +304,10 @@ class SalesController extends GetxController with BaseRemoteController {
         );
       }
 
-      sales.value = processedSales; // Update the observable list
-      log('✅ SalesController: Sales data processed successfully with details. Total sales entries: ${sales.length}');
-
-    } catch (e, st) {
-      log('[SalesController] ❌ Error loading sales data: $e\n$st');
-      sales.clear(); // Clear data on error
-    } finally {
-      log('[SalesController] Loading finished. isLoadingSales: false');
+      // Yield control periodically
+      if (i % (chunkSize * 2) == 0) {
+        await Future.delayed(Duration.zero);
+      }
     }
   }
 
