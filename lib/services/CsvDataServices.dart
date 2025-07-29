@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'dart:developer';
 import 'dart:isolate';
+import 'dart:async';
 
 import '../constants/paths.dart';
 import 'google_drive_service.dart';
@@ -47,6 +48,13 @@ class CsvDataService extends GetxController {
   // Memory usage tracking
   final RxDouble memoryUsageMB = 0.0.obs;
   final RxBool isMemoryWarning = false.obs;
+  
+  // Progress tracking
+  final RxBool isLoading = false.obs;
+  final RxString loadingMessage = ''.obs;
+  final RxDouble loadingProgress = 0.0.obs;
+  final RxInt currentFileIndex = 0.obs;
+  final RxInt totalFiles = 0.obs;
 
   @override
   void onInit() {
@@ -129,103 +137,172 @@ class CsvDataService extends GetxController {
   }
 
   Future<void> _loadCsvsInternal({required bool forceDownload}) async {
-    final lastSync = _box.read<int?>(_lastCsvSyncTimestampKey);
-    final isCacheValid = lastSync != null &&
-        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastSync)) < _cacheDuration;
+    isLoading.value = true;
+    loadingMessage.value = 'Checking cache...';
+    loadingProgress.value = 0.0;
+    
+    try {
+      final lastSync = _box.read<int?>(_lastCsvSyncTimestampKey);
+      final isCacheValid = lastSync != null &&
+          DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastSync)) < _cacheDuration;
 
-    final List<Map<String, dynamic>> csvConfigs = [
-      {'key': _salesMasterCacheKey, 'filename': 'SalesInvoiceMaster.csv', 'priority': 1},
-      {'key': _salesDetailsCacheKey, 'filename': 'SalesInvoiceDetails.csv', 'priority': 1},
-      {'key': _itemMasterCacheKey, 'filename': 'ItemMaster.csv', 'priority': 1},
-      {'key': _itemDetailCacheKey, 'filename': 'ItemDetail.csv', 'priority': 1},
-      {'key': _accountMasterCacheKey, 'filename': 'AccountMaster.csv', 'priority': 2},
-      {'key': _allAccountsCacheKey, 'filename': 'AllAccounts.csv', 'priority': 2},
-      {'key': _customerInfoCacheKey, 'filename': 'CustomerInformation.csv', 'priority': 2},
-      {'key': _supplierInfoCacheKey, 'filename': 'SupplierInformation.csv', 'priority': 2},
-    ];
+      final List<Map<String, dynamic>> csvConfigs = [
+        {'key': _salesMasterCacheKey, 'filename': 'SalesInvoiceMaster.csv', 'priority': 1},
+        {'key': _salesDetailsCacheKey, 'filename': 'SalesInvoiceDetails.csv', 'priority': 1},
+        {'key': _itemMasterCacheKey, 'filename': 'ItemMaster.csv', 'priority': 1},
+        {'key': _itemDetailCacheKey, 'filename': 'ItemDetail.csv', 'priority': 1},
+        {'key': _accountMasterCacheKey, 'filename': 'AccountMaster.csv', 'priority': 2},
+        {'key': _allAccountsCacheKey, 'filename': 'AllAccounts.csv', 'priority': 2},
+        {'key': _customerInfoCacheKey, 'filename': 'CustomerInformation.csv', 'priority': 2},
+        {'key': _supplierInfoCacheKey, 'filename': 'SupplierInformation.csv', 'priority': 2},
+      ];
 
-    bool needsDownload = forceDownload;
-    if (!forceDownload) {
-      if (!isCacheValid) {
-        log('💡 CsvDataService: Cache expired. Will download.');
-        needsDownload = true;
-      } else {
-        for (final config in csvConfigs.where((c) => c['priority'] == 1)) {
-          final cached = _box.read(config['key']);
-          if (cached == null || cached.isEmpty) {
-            log('⚠️ CsvDataService: Missing essential cache for key: ${config['key']}');
-            needsDownload = true;
-            break;
-          }
-        }
-
-        if (!needsDownload) {
-          log('✅ CsvDataService: Loading CSVs from cache.');
-          for (final config in csvConfigs) {
+      bool needsDownload = forceDownload;
+      if (!forceDownload) {
+        if (!isCacheValid) {
+          log('💡 CsvDataService: Cache expired. Will download.');
+          needsDownload = true;
+        } else {
+          for (final config in csvConfigs.where((c) => c['priority'] == 1)) {
             final cached = _box.read(config['key']);
-            if (cached != null && cached.isNotEmpty) {
-              _populateReactiveVarFromCache(config['key'], cached);
+            if (cached == null || cached.isEmpty) {
+              log('⚠️ CsvDataService: Missing essential cache for key: ${config['key']}');
+              needsDownload = true;
+              break;
             }
           }
-          return;
+
+          if (!needsDownload) {
+            log('✅ CsvDataService: Loading CSVs from cache.');
+            loadingMessage.value = 'Loading from cache...';
+            for (int i = 0; i < csvConfigs.length; i++) {
+              final config = csvConfigs[i];
+              final cached = _box.read(config['key']);
+              if (cached != null && cached.isNotEmpty) {
+                _populateReactiveVarFromCache(config['key'], cached);
+              }
+              loadingProgress.value = (i + 1) / csvConfigs.length;
+            }
+            return;
+          }
         }
       }
-    }
 
-    if (needsDownload) {
-      try {
+      if (needsDownload) {
+        loadingMessage.value = 'Downloading data from Google Drive...';
         final path = await SoftAgriPath.build(drive);
         final folderId = await drive.folderId(path);
-        await _downloadCsvsWithMemoryManagement(csvConfigs, folderId);
+        await _downloadCsvsWithProgressTracking(csvConfigs, folderId);
         await _box.write(_lastCsvSyncTimestampKey, DateTime.now().millisecondsSinceEpoch);
         log('📦 CsvDataService: All CSVs downloaded and cached.');
-      } catch (e, st) {
-        log('❌ CsvDataService: Error in _loadCsvsInternal: $e\n$st');
-        _clearAllReactiveVars();
       }
+    } catch (e, st) {
+      log('❌ CsvDataService: Error in _loadCsvsInternal: $e\n$st');
+      _clearAllReactiveVars();
+    } finally {
+      isLoading.value = false;
+      loadingMessage.value = '';
+      loadingProgress.value = 0.0;
     }
   }
 
-
-  /// Download CSVs with memory management and priority-based loading
-  Future<void> _downloadCsvsWithMemoryManagement(
+  /// Download CSVs with progress tracking and memory management
+  Future<void> _downloadCsvsWithProgressTracking(
       List<Map<String, dynamic>> csvConfigs,
       String folderId,
       ) async {
     csvConfigs.sort((a, b) => a['priority'].compareTo(b['priority']));
+    totalFiles.value = csvConfigs.length;
 
-    for (final config in csvConfigs) {
+    // Download all files first
+    final List<Map<String, dynamic>> downloadTasks = [];
+    for (int i = 0; i < csvConfigs.length; i++) {
+      final config = csvConfigs[i];
+      currentFileIndex.value = i + 1;
+      loadingMessage.value = 'Downloading ${config['filename']}...';
+      
       try {
-        if (memoryUsageMB.value > _maxMemoryUsageMB * 0.8 && config['priority'] > 1) {
-          log('⚠️ CsvDataService: Skipping ${config['filename']} due to memory constraints');
-          continue;
-        }
-
         final fileId = await drive.fileId(config['filename'], folderId);
         final csvData = await drive.downloadCsv(fileId);
-
-        // 💡 Offload parsing to isolate
-        final result = await compute(parseAndCacheCsv, {
+        
+        downloadTasks.add({
           'key': config['key'],
           'csvData': csvData,
+          'chunkSize': _chunkSize,
         });
-
-        final String key = result['key'];
-        final String parsedCsv = result['csvData'];
-        final double estimatedSize = result['estimatedSizeMB'];
-
-        memoryUsageMB.value += estimatedSize;
-        _populateReactiveVarFromCache(key, parsedCsv);
-        await _box.write(key, parsedCsv);
-
-        log('📥 CsvDataService: Downloaded $key (${estimatedSize.toStringAsFixed(1)}MB)');
-
-        await Future.delayed(Duration(milliseconds: 100));
-
+        
+        loadingProgress.value = (i + 1) / csvConfigs.length;
+        
+        // Small delay to prevent overwhelming the network
+        await Future.delayed(Duration(milliseconds: 200));
+        
       } catch (e, st) {
         log('❌ CsvDataService: Failed to download ${config['filename']}: $e\n$st');
         continue;
       }
+    }
+
+    // Process all downloaded files using isolates
+    if (downloadTasks.isNotEmpty) {
+      loadingMessage.value = 'Processing data...';
+      await _processCsvsInIsolates(downloadTasks);
+    }
+  }
+
+  /// Process CSVs using isolates with progress tracking
+  Future<void> _processCsvsInIsolates(List<Map<String, dynamic>> downloadTasks) async {
+    // Create a receive port for progress updates
+    final receivePort = ReceivePort();
+    
+    // Listen for progress updates
+    receivePort.listen((message) {
+      if (message is Map<String, dynamic>) {
+        if (message['type'] == 'progress') {
+          final current = message['current'] as int;
+          final total = message['total'] as int;
+          final progress = total > 0 ? current / total : 0.0;
+          
+          loadingMessage.value = message['message'] ?? 'Processing...';
+          loadingProgress.value = progress;
+        } else if (message['type'] == 'file_progress') {
+          loadingMessage.value = message['message'] ?? 'Processing files...';
+        }
+      }
+    });
+
+    try {
+      // Process files in batches to avoid memory issues
+      const int batchSize = 3;
+      for (int i = 0; i < downloadTasks.length; i += batchSize) {
+        final end = (i + batchSize < downloadTasks.length) ? i + batchSize : downloadTasks.length;
+        final batch = downloadTasks.sublist(i, end);
+        
+        // Process batch using isolate
+        final results = await compute(processMultipleCsvs, {
+          'csvConfigs': batch,
+          'progressPort': receivePort.sendPort,
+        });
+        
+        // Update reactive variables with results
+        for (final entry in results.entries) {
+          final key = entry.key;
+          final result = entry.value as Map<String, dynamic>;
+          
+          final String parsedCsv = result['csvData'];
+          final double estimatedSize = result['estimatedSizeMB'];
+          
+          memoryUsageMB.value += estimatedSize;
+          _populateReactiveVarFromCache(key, parsedCsv);
+          await _box.write(key, parsedCsv);
+          
+          log('📥 CsvDataService: Processed $key (${estimatedSize.toStringAsFixed(1)}MB)');
+        }
+        
+        // Small delay between batches
+        await Future.delayed(Duration(milliseconds: 100));
+      }
+    } finally {
+      receivePort.close();
     }
   }
 
