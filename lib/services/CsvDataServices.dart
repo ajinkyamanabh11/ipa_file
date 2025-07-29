@@ -50,12 +50,233 @@ class CsvDataService extends GetxController {
   final RxDouble memoryUsageMB = 0.0.obs;
   final RxBool isMemoryWarning = false.obs;
 
+  // Loading states for different data types
+  final RxBool isLoadingSalesData = false.obs;
+  final RxBool isLoadingItemData = false.obs;
+  final RxBool isLoadingAccountData = false.obs;
+  final RxBool isLoadingCustomerSupplierData = false.obs;
+
+  // Error states for different data types
+  final RxString salesDataError = ''.obs;
+  final RxString itemDataError = ''.obs;
+  final RxString accountDataError = ''.obs;
+  final RxString customerSupplierDataError = ''.obs;
+
   @override
   void onInit() {
     super.onInit();
     _startMemoryMonitoring();
-    // Potentially load from cache on init, but don't force download
-    // loadAllCsvs(forceDownload: false); // Or load specific ones if needed
+    // Remove automatic loading - data will be loaded on demand
+    // loadAllCsvs(forceDownload: false); // REMOVED - implementing lazy loading
+  }
+
+  /// Load specific CSV files on demand - Sales related data
+  Future<void> loadSalesData({bool forceDownload = false}) async {
+    if (isLoadingSalesData.value) {
+      log('⏳ CsvDataService: Sales data loading already in progress');
+      return;
+    }
+
+    isLoadingSalesData.value = true;
+    salesDataError.value = '';
+    log('🔄 CsvDataService: Loading sales data on demand (forceDownload: $forceDownload)');
+    
+    try {
+      await _loadSpecificCsvs([
+        {'key': _salesMasterCacheKey, 'filename': 'SalesInvoiceMaster.csv', 'priority': 1},
+        {'key': _salesDetailsCacheKey, 'filename': 'SalesInvoiceDetails.csv', 'priority': 1},
+      ], forceDownload: forceDownload);
+      log('✅ CsvDataService: Sales data loaded successfully');
+    } catch (e) {
+      salesDataError.value = 'Failed to load sales data: $e';
+      log('❌ CsvDataService: Error loading sales data: $e');
+      rethrow;
+    } finally {
+      isLoadingSalesData.value = false;
+    }
+  }
+
+  /// Load specific CSV files on demand - Item/Stock related data
+  Future<void> loadItemData({bool forceDownload = false}) async {
+    if (isLoadingItemData.value) {
+      log('⏳ CsvDataService: Item data loading already in progress');
+      return;
+    }
+
+    isLoadingItemData.value = true;
+    itemDataError.value = '';
+    log('🔄 CsvDataService: Loading item data on demand (forceDownload: $forceDownload)');
+    
+    try {
+      await _loadSpecificCsvs([
+        {'key': _itemMasterCacheKey, 'filename': 'ItemMaster.csv', 'priority': 1},
+        {'key': _itemDetailCacheKey, 'filename': 'ItemDetail.csv', 'priority': 1},
+      ], forceDownload: forceDownload);
+      log('✅ CsvDataService: Item data loaded successfully');
+    } catch (e) {
+      itemDataError.value = 'Failed to load item data: $e';
+      log('❌ CsvDataService: Error loading item data: $e');
+      rethrow;
+    } finally {
+      isLoadingItemData.value = false;
+    }
+  }
+
+  /// Load specific CSV files on demand - Account related data
+  Future<void> loadAccountData({bool forceDownload = false}) async {
+    if (isLoadingAccountData.value) {
+      log('⏳ CsvDataService: Account data loading already in progress');
+      return;
+    }
+
+    isLoadingAccountData.value = true;
+    accountDataError.value = '';
+    log('🔄 CsvDataService: Loading account data on demand (forceDownload: $forceDownload)');
+    
+    try {
+      await _loadSpecificCsvs([
+        {'key': _accountMasterCacheKey, 'filename': 'AccountMaster.csv', 'priority': 2},
+        {'key': _allAccountsCacheKey, 'filename': 'AllAccounts.csv', 'priority': 2},
+      ], forceDownload: forceDownload);
+      log('✅ CsvDataService: Account data loaded successfully');
+    } catch (e) {
+      accountDataError.value = 'Failed to load account data: $e';
+      log('❌ CsvDataService: Error loading account data: $e');
+      rethrow;
+    } finally {
+      isLoadingAccountData.value = false;
+    }
+  }
+
+  /// Load specific CSV files on demand - Customer/Supplier related data
+  Future<void> loadCustomerSupplierData({bool forceDownload = false}) async {
+    if (isLoadingCustomerSupplierData.value) {
+      log('⏳ CsvDataService: Customer/Supplier data loading already in progress');
+      return;
+    }
+
+    isLoadingCustomerSupplierData.value = true;
+    customerSupplierDataError.value = '';
+    log('🔄 CsvDataService: Loading customer/supplier data on demand (forceDownload: $forceDownload)');
+    
+    try {
+      await _loadSpecificCsvs([
+        {'key': _customerInfoCacheKey, 'filename': 'CustomerInformation.csv', 'priority': 2},
+        {'key': _supplierInfoCacheKey, 'filename': 'SupplierInformation.csv', 'priority': 2},
+      ], forceDownload: forceDownload);
+      log('✅ CsvDataService: Customer/Supplier data loaded successfully');
+    } catch (e) {
+      customerSupplierDataError.value = 'Failed to load customer/supplier data: $e';
+      log('❌ CsvDataService: Error loading customer/supplier data: $e');
+      rethrow;
+    } finally {
+      isLoadingCustomerSupplierData.value = false;
+    }
+  }
+
+  /// Load only the data needed for a specific screen/feature
+  Future<void> loadDataForFeature(String feature, {bool forceDownload = false}) async {
+    switch (feature.toLowerCase()) {
+      case 'sales':
+        await loadSalesData(forceDownload: forceDownload);
+        break;
+      case 'stock':
+      case 'items':
+        await loadItemData(forceDownload: forceDownload);
+        break;
+      case 'profit':
+        // Profit needs both sales and item data
+        await loadSalesData(forceDownload: forceDownload);
+        await loadItemData(forceDownload: forceDownload);
+        break;
+      case 'ledger':
+      case 'customers':
+        await loadCustomerSupplierData(forceDownload: forceDownload);
+        await loadAccountData(forceDownload: forceDownload);
+        break;
+      case 'debtors':
+      case 'creditors':
+        await loadCustomerSupplierData(forceDownload: forceDownload);
+        break;
+      default:
+        log('⚠️ CsvDataService: Unknown feature "$feature", loading all data');
+        await loadAllCsvs(forceDownload: forceDownload);
+    }
+  }
+
+  /// Private method to load specific CSV files
+  Future<void> _loadSpecificCsvs(List<Map<String, dynamic>> csvConfigs, {bool forceDownload = false}) async {
+    final lastSync = _box.read<int?>(_lastCsvSyncTimestampKey);
+    final isCacheValid = lastSync != null &&
+        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastSync)) < _cacheDuration;
+
+    bool needsDownload = forceDownload;
+    if (!forceDownload) {
+      if (!isCacheValid) {
+        log('💡 CsvDataService: Cache expired. Will download specific CSVs.');
+        needsDownload = true;
+      } else {
+        // Check if any of the requested CSVs are missing from cache
+        for (final config in csvConfigs) {
+          final cached = _box.read(config['key']);
+          if (cached == null || cached.isEmpty) {
+            log('⚠️ CsvDataService: Missing cache for key: ${config['key']}');
+            needsDownload = true;
+            break;
+          }
+        }
+
+        if (!needsDownload) {
+          log('✅ CsvDataService: Loading specific CSVs from cache.');
+          for (final config in csvConfigs) {
+            final cached = _box.read(config['key']);
+            if (cached != null && cached.isNotEmpty) {
+              _populateReactiveVarFromCache(config['key'], cached);
+            }
+          }
+          return;
+        }
+      }
+    }
+
+    if (needsDownload) {
+      try {
+        final path = await SoftAgriPath.build(drive);
+        final folderId = await drive.folderId(path);
+        await _downloadSpecificCsvs(csvConfigs, folderId);
+        // Update sync timestamp only if we downloaded something
+        await _box.write(_lastCsvSyncTimestampKey, DateTime.now().millisecondsSinceEpoch);
+        log('📦 CsvDataService: Specific CSVs downloaded and cached.');
+      } catch (e, st) {
+        log('❌ CsvDataService: Error loading specific CSVs: $e\n$st');
+        rethrow;
+      }
+    }
+  }
+
+  /// Download specific CSV files with memory management
+  Future<void> _downloadSpecificCsvs(List<Map<String, dynamic>> csvConfigs, String folderId) async {
+    for (final config in csvConfigs) {
+      try {
+        log('📥 CsvDataService: Downloading ${config['filename']}...');
+        final content = await drive.downloadCsvContent(folderId, config['filename']);
+        
+        if (content.isNotEmpty) {
+          await _box.write(config['key'], content);
+          _populateReactiveVarFromCache(config['key'], content);
+          log('✅ CsvDataService: Successfully downloaded and cached ${config['filename']}');
+        } else {
+          log('⚠️ CsvDataService: Empty content for ${config['filename']}');
+        }
+        
+        // Update memory usage
+        getCurrentMemoryUsageMB();
+        
+      } catch (e) {
+        log('❌ CsvDataService: Failed to download ${config['filename']}: $e');
+        // Continue with other files even if one fails
+      }
+    }
   }
 
   /// Monitor memory usage and trigger cleanup if needed

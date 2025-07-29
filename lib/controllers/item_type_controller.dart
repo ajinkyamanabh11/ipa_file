@@ -34,25 +34,20 @@ class ItemTypeController extends GetxController with BaseRemoteController {
   @override
   Future<void> onInit() async {
     super.onInit();
-    log('[ItemTypeController] Initializing and loading data...');
-    await _load();
+    log('[ItemTypeController] Initializing item type controller (lazy loading - no automatic data load)');
+    // Removed automatic data loading - data will be loaded when loadItemTypes() is called
+    // await loadItemTypes(); // REMOVED - implementing lazy loading
   }
 
-  Future<void> fetchItemTypes({bool silent = false, bool forceRefresh = false}) async =>
-      guard(() => _load(silent: silent, forceRefresh: forceRefresh));
-
-  void search(String q) {
-    filteredItemTypes.value = allItemTypes
-        .where((t) => t.toLowerCase().contains(q.toLowerCase()))
-        .toList();
-  }
-
-  Future<void> _load({bool silent = false, forceRefresh = false}) async {
-    if (!silent) isLoading(true);
+  /// Public method to load item type data.
+  Future<void> loadItemTypes({bool forceRefresh = false}) async {
+    log('[ItemTypeController] Loading item type data...');
+    isLoading.value = true;
     errorMessage.value = null;
 
     try {
-      await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
+      // Load only item-related data on demand
+      await _csvDataService.loadItemData(forceDownload: forceRefresh);
 
       final String masterCsv = _csvDataService.itemMasterCsv.value;
       final String detailCsv = _csvDataService.itemDetailCsv.value;
@@ -144,8 +139,17 @@ class ItemTypeController extends GetxController with BaseRemoteController {
       uniqueItemDetails.clear();
       _setError('Failed to load item types: $e');
     } finally {
-      if (!silent) isLoading(false);
+      isLoading.value = false;
     }
+  }
+
+  Future<void> fetchItemTypes({bool silent = false, bool forceRefresh = false}) async =>
+      guard(() => loadItemTypes(forceRefresh: forceRefresh));
+
+  void search(String q) {
+    filteredItemTypes.value = allItemTypes
+        .where((t) => t.toLowerCase().contains(q.toLowerCase()))
+        .toList();
   }
 
   void populateUniqueItems() {

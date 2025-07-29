@@ -74,6 +74,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _animationController.forward();
+        // Load today's profit data when home screen is accessed (lazy loading)
+        final todayProfitController = Get.put(TodayProfitController());
+        todayProfitController.calculateTodayProfit();
       }
     });
 

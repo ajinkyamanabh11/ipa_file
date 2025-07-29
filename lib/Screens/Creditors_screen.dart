@@ -26,6 +26,11 @@ class _CreditorsScreen extends State<CreditorsScreen> {
   void initState() {
     super.initState();
     listCtrl.addListener(() => showFab.value = listCtrl.offset > 300);
+    
+    // Load customer ledger data when creditors screen is accessed (lazy loading)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ctrl.loadCustomerLedger();
+    });
   }
 
   @override
