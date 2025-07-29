@@ -7,6 +7,7 @@ import '../constants/paths.dart';
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
 import '../services/CsvDataServices.dart';
+import '../services/lazy_data_service.dart';
 import 'base_remote_controller.dart';
 
 // --- Data Models for Sales Data ---
@@ -88,6 +89,7 @@ class SalesController extends GetxController with BaseRemoteController {
   // Dependencies injected using GetX
   final GoogleDriveService drive = Get.find<GoogleDriveService>();
   final CsvDataService _csvDataService = Get.find<CsvDataService>();
+  final LazyDataService _lazyDataService = Get.find<LazyDataService>();
 
   // Observable list to hold the processed sales data, now using the SalesEntry model.
   final sales = <SalesEntry>[].obs;
@@ -95,9 +97,8 @@ class SalesController extends GetxController with BaseRemoteController {
   @override
   Future<void> onInit() async {
     super.onInit();
-    log('[SalesController] Initializing and loading sales data...');
-    // Guard ensures that the async operation is handled safely (e.g., preventing multiple calls).
-    guard(() => _loadSales(forceRefresh: true));
+    log('[SalesController] Initializing...');
+    // Don't load data automatically - wait for explicit request
   }
 
   /// Public method to trigger fetching sales data, with an option to force a fresh download.
@@ -106,13 +107,14 @@ class SalesController extends GetxController with BaseRemoteController {
   /// Private method to load and process sales data from multiple CSVs.
   Future<void> _loadSales({bool forceRefresh = false}) async {
     try {
-      // 1. Load all necessary CSVs from Google Drive (or cache).
-      await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
+      // 1. Load only sales-related CSVs on demand
+      await _lazyDataService.loadSalesData(forceRefresh: forceRefresh);
+      await _lazyDataService.loadItemData(forceRefresh: forceRefresh);
 
-      // Get the raw CSV string content from the service.
-      final String salesMasterCsv = _csvDataService.salesMasterCsv.value;
-      final String salesInvoiceDetailsCsv = _csvDataService.salesDetailsCsv.value;
-      final String itemMasterCsv = _csvDataService.itemMasterCsv.value;
+      // Get the raw CSV string content from the lazy service.
+      final String salesMasterCsv = _lazyDataService.salesMasterCsv.value;
+      final String salesInvoiceDetailsCsv = _lazyDataService.salesDetailsCsv.value;
+      final String itemMasterCsv = _lazyDataService.itemMasterCsv.value;
 
       // Basic checks for empty data to provide informative logs.
       if (salesMasterCsv.isEmpty) {

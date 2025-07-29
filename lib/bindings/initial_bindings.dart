@@ -12,6 +12,7 @@ import '../controllers/item_type_controller.dart';
 import '../controllers/sales_controller.dart';
 import '../controllers/theme_controller.dart';
 import '../services/CsvDataServices.dart';
+import '../services/lazy_data_service.dart';
 import '../services/google_drive_service.dart';
 import '../services/background_processor.dart';
 import '../util/memory_monitor.dart'; // NEW IMPORT
@@ -42,8 +43,11 @@ class InitialBindings {
       permanent: true,
     );
 
-    // 🔴 NEW: Centralized CSV Data Service
+    // 🔴 NEW: Centralized CSV Data Service (keeping for backward compatibility)
     Get.put<CsvDataService>(CsvDataService(), permanent: true);
+    
+    // 🔴 NEW: Lazy Data Service for on-demand loading
+    Get.put<LazyDataService>(LazyDataService(), permanent: true);
 
     // 🔴 NEW: Theme Controller (permanent singleton)
     Get.put<ThemeController>(ThemeController(), permanent: true); // ADD THIS

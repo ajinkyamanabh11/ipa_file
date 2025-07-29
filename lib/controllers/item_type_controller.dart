@@ -3,6 +3,7 @@
 import 'package:get/get.dart';
 import '../constants/paths.dart';
 import '../services/CsvDataServices.dart';
+import '../services/lazy_data_service.dart';
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
 import 'base_remote_controller.dart';
@@ -11,6 +12,7 @@ import 'dart:developer';
 class ItemTypeController extends GetxController with BaseRemoteController {
   final drive = Get.find<GoogleDriveService>();
   final CsvDataService _csvDataService = Get.find<CsvDataService>();
+  final LazyDataService _lazyDataService = Get.find<LazyDataService>();
 
   final allItemTypes = <String>[].obs;
   final filteredItemTypes = <String>[].obs;
@@ -34,8 +36,8 @@ class ItemTypeController extends GetxController with BaseRemoteController {
   @override
   Future<void> onInit() async {
     super.onInit();
-    log('[ItemTypeController] Initializing and loading data...');
-    await _load();
+    log('[ItemTypeController] Initializing...');
+    // Don't load data automatically - wait for explicit request
   }
 
   Future<void> fetchItemTypes({bool silent = false, bool forceRefresh = false}) async =>
@@ -52,10 +54,10 @@ class ItemTypeController extends GetxController with BaseRemoteController {
     errorMessage.value = null;
 
     try {
-      await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
+      await _lazyDataService.loadItemData(forceRefresh: forceRefresh);
 
-      final String masterCsv = _csvDataService.itemMasterCsv.value;
-      final String detailCsv = _csvDataService.itemDetailCsv.value;
+      final String masterCsv = _lazyDataService.itemMasterCsv.value;
+      final String detailCsv = _lazyDataService.itemDetailCsv.value;
 
       if (masterCsv.isEmpty || detailCsv.isEmpty) {
         _setError('Item Master or Item Detail CSV data is empty. Cannot process item types.');
