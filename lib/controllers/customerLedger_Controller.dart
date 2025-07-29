@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 
 import '../constants/paths.dart';
 import '../services/CsvDataServices.dart';
+import '../services/lazy_data_service.dart';
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
  // NEW IMPORT for CsvDataService
@@ -18,6 +19,7 @@ class CustomerLedgerController extends GetxController {
   final GoogleDriveService drive = Get.find<GoogleDriveService>();
   final GoogleSignInController _googleSignInController = Get.find<GoogleSignInController>();
   final CsvDataService _csvDataService = Get.find<CsvDataService>(); // NEW: Get CsvDataService instance
+  final LazyDataService _lazyDataService = Get.find<LazyDataService>(); // NEW: Get LazyDataService instance
 
   // ───────────── reactive stores ─────────────
   final accounts = <AccountModel>[].obs;
@@ -69,10 +71,10 @@ class CustomerLedgerController extends GetxController {
     });
 
     // Initial load attempt based on current sign-in status
-    // Now just trigger a load, CsvDataService will handle initial download/cache logic
+    // Don't load data automatically - wait for explicit request
     if (_googleSignInController.isSignedIn) {
-      log('👤 CustomerLedgerController: Already signed in on init. Loading data...');
-      _load();
+      log('👤 CustomerLedgerController: Already signed in on init. Ready to load data when needed.');
+      requiresSignIn(false);
     } else {
       log('👤 CustomerLedgerController: Not signed in on init. Awaiting sign-in.');
       requiresSignIn(true);
@@ -98,18 +100,20 @@ class CustomerLedgerController extends GetxController {
       error.value = null;
       requiresSignIn(false);
 
-      // 🔴 CRITICAL CHANGE: Load all necessary CSVs via CsvDataService
-      await _csvDataService.loadAllCsvs(forceDownload: forceRefreshCsv);
+      // 🔴 CRITICAL CHANGE: Load only necessary CSVs via LazyDataService
+      await _lazyDataService.loadAccountData(forceRefresh: forceRefreshCsv);
+      await _lazyDataService.loadCustomerData(forceRefresh: forceRefreshCsv);
+      await _lazyDataService.loadSupplierData(forceRefresh: forceRefreshCsv);
 
-      // Check if the necessary CSVs from CsvDataService are available
-      if (_csvDataService.accountMasterCsv.value.isEmpty ||
-          _csvDataService.allAccountsCsv.value.isEmpty ||
-          _csvDataService.customerInfoCsv.value.isEmpty ||
-          _csvDataService.supplierInfoCsv.value.isEmpty)
+      // Check if the necessary CSVs from LazyDataService are available
+      if (_lazyDataService.accountMasterCsv.value.isEmpty ||
+          _lazyDataService.allAccountsCsv.value.isEmpty ||
+          _lazyDataService.customerInfoCsv.value.isEmpty ||
+          _lazyDataService.supplierInfoCsv.value.isEmpty)
       {
-        log('⚠️ CustomerLedgerController: Required CSV data missing after CsvDataService load.');
+        log('⚠️ CustomerLedgerController: Required CSV data missing after LazyDataService load.');
         // This might indicate a network issue or Google Drive permission problem
-        // that CsvDataService couldn't fully resolve.
+        // that LazyDataService couldn't fully resolve.
         error.value = 'Failed to load essential ledger data. Please check your internet connection or Google Drive permissions.';
         // Don't set requiresSignIn unless specifically a sign-in error propagated
         return; // Exit if data isn't available
@@ -121,22 +125,22 @@ class CustomerLedgerController extends GetxController {
           e.key.toString().trim().toLowerCase(): e.value
       };
 
-      // Populate controller's data from CsvDataService's reactive properties
-      accounts.value = CsvUtils.toMaps(_csvDataService.accountMasterCsv.value)
+      // Populate controller's data from LazyDataService's reactive properties
+      accounts.value = CsvUtils.toMaps(_lazyDataService.accountMasterCsv.value)
           .map(_lc) // Apply lowercase keys conversion
           .map(AccountModel.fromMap)
           .toList();
 
-      transactions.value = CsvUtils.toMaps(_csvDataService.allAccountsCsv.value)
+      transactions.value = CsvUtils.toMaps(_lazyDataService.allAccountsCsv.value)
           .map(_lc) // Apply lowercase keys conversion
           .map(AllAccountsModel.fromMap)
           .toList();
 
-      customerInfo.value = CsvUtils.toMaps(_csvDataService.customerInfoCsv.value)
+      customerInfo.value = CsvUtils.toMaps(_lazyDataService.customerInfoCsv.value)
           .map(_lc) // Apply lowercase keys conversion
           .toList();
 
-      supplierInfo.value = CsvUtils.toMaps(_csvDataService.supplierInfoCsv.value)
+      supplierInfo.value = CsvUtils.toMaps(_lazyDataService.supplierInfoCsv.value)
           .map(_lc) // Apply lowercase keys conversion
           .toList();
 
