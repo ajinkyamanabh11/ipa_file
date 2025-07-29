@@ -52,7 +52,11 @@ class ItemTypeController extends GetxController with BaseRemoteController {
     errorMessage.value = null;
 
     try {
-      await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
+      // Load only the CSVs needed for item types (lazy loading)
+      await _csvDataService.loadCsvs([
+        CsvDataService.itemMasterCacheKey,
+        CsvDataService.itemDetailCacheKey,
+      ], forceDownload: forceRefresh);
 
       final String masterCsv = _csvDataService.itemMasterCsv.value;
       final String detailCsv = _csvDataService.itemDetailCsv.value;

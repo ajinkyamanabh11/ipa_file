@@ -96,7 +96,11 @@ class StockReportController extends GetxController {
     processingProgress.value = 0.0;
 
     try {
-      await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
+      // Load only the CSVs needed for stock report (lazy loading)
+      await _csvDataService.loadCsvs([
+        CsvDataService.itemMasterCacheKey,
+        CsvDataService.itemDetailCacheKey,
+      ], forceDownload: forceRefresh);
 
       if (_csvDataService.itemDetailCsv.value.isEmpty || _csvDataService.itemMasterCsv.value.isEmpty) {
         errorMessage.value = 'Required CSV data (ItemMaster or ItemDetail) is empty. Please ensure files are on Google Drive.';
