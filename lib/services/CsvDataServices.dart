@@ -50,6 +50,148 @@ class CsvDataService extends GetxController {
   final RxDouble memoryUsageMB = 0.0.obs;
   final RxBool isMemoryWarning = false.obs;
 
+  // ────────────────────────────────────────────────────────────────────────────
+  // CSV configuration list moved to class-level for reusability in selective
+  // loading APIs. Each entry contains:
+  //   key      → local cache key / reactive variable key
+  //   filename → CSV file name on Google Drive
+  //   priority → Loading priority (1 = essential, higher = less essential)
+  //
+  // NOTE: Previously this list lived inside _loadCsvsInternal. It is now hoisted
+  // so that new public helpers (e.g. loadCsvs) can reuse the same metadata.
+  static const List<Map<String, dynamic>> _csvConfigs = [
+    {'key': _salesMasterCacheKey, 'filename': 'SalesInvoiceMaster.csv', 'priority': 1},
+    {'key': _salesDetailsCacheKey, 'filename': 'SalesInvoiceDetails.csv', 'priority': 1},
+    {'key': _itemMasterCacheKey, 'filename': 'ItemMaster.csv', 'priority': 1},
+    {'key': _itemDetailCacheKey, 'filename': 'ItemDetail.csv', 'priority': 1},
+    {'key': _accountMasterCacheKey, 'filename': 'AccountMaster.csv', 'priority': 2},
+    {'key': _allAccountsCacheKey, 'filename': 'AllAccounts.csv', 'priority': 2},
+    {'key': _customerInfoCacheKey, 'filename': 'CustomerInformation.csv', 'priority': 2},
+    {'key': _supplierInfoCacheKey, 'filename': 'SupplierInformation.csv', 'priority': 2},
+  ];
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Public API: Load only specific CSV files when they are needed rather than
+  // eagerly downloading the whole data-set. Accepts a list of filenames that
+  // correspond to Google-Drive CSVs declared in [_csvConfigs].
+  //
+  // Example:
+  //   await loadCsvs(['ItemMaster.csv', 'ItemDetail.csv']);
+  //
+  // If [forceDownload] is true the CSVs will be freshly downloaded even when a
+  // valid (non-expired) cache entry already exists.
+  Future<void> loadCsvs(
+      List<String> filenames, {
+      bool forceDownload = false,
+    }) async {
+    // Fast-path when nothing requested
+    if (filenames.isEmpty) return;
+
+    // Prevent overlapping loads – if a global loading Future is in progress we
+    // just await it unless a force refresh is explicitly requested.
+    if (_loadingFuture != null) {
+      if (forceDownload) {
+        try {
+          await _loadingFuture;
+        } catch (_) {
+          // swallow previous errors so new attempt can proceed.
+        }
+      } else {
+        await _loadingFuture;
+        return;
+      }
+    }
+
+    // Build subset config list for requested filenames only.
+    final subsetConfigs = _csvConfigs
+        .where((c) => filenames.contains(c['filename']))
+        .toList();
+
+    if (subsetConfigs.isEmpty) {
+      log('⚠️ CsvDataService: No matching CSV configs found for filenames: $filenames');
+      return;
+    }
+
+    // Determine cache validity once (shared timestamp).
+    final lastSync = _box.read<int?>(_lastCsvSyncTimestampKey);
+    final bool isCacheValid = lastSync != null &&
+        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastSync)) <
+            _cacheDuration;
+
+    // Identify which CSVs actually need downloading.
+    final List<Map<String, dynamic>> toDownload = [];
+
+    for (final config in subsetConfigs) {
+      final String key = config['key'];
+
+      if (!forceDownload) {
+        // Already loaded in memory?
+        bool inMemory = false;
+        switch (key) {
+          case _salesMasterCacheKey:
+            inMemory = salesMasterCsv.value.isNotEmpty;
+            break;
+          case _salesDetailsCacheKey:
+            inMemory = salesDetailsCsv.value.isNotEmpty;
+            break;
+          case _itemMasterCacheKey:
+            inMemory = itemMasterCsv.value.isNotEmpty;
+            break;
+          case _itemDetailCacheKey:
+            inMemory = itemDetailCsv.value.isNotEmpty;
+            break;
+          case _accountMasterCacheKey:
+            inMemory = accountMasterCsv.value.isNotEmpty;
+            break;
+          case _allAccountsCacheKey:
+            inMemory = allAccountsCsv.value.isNotEmpty;
+            break;
+          case _customerInfoCacheKey:
+            inMemory = customerInfoCsv.value.isNotEmpty;
+            break;
+          case _supplierInfoCacheKey:
+            inMemory = supplierInfoCsv.value.isNotEmpty;
+            break;
+        }
+
+        if (inMemory && isCacheValid) {
+          // Data already resident in memory with valid cache timestamp.
+          continue;
+        }
+
+        final cached = _box.read<String?>(key);
+        if (cached != null && cached.isNotEmpty && isCacheValid) {
+          // Load from cache into reactive var
+          _populateReactiveVarFromCache(key, cached);
+          continue;
+        }
+      }
+
+      // If we reach here, we need to download this CSV.
+      toDownload.add(config);
+    }
+
+    if (toDownload.isEmpty) {
+      log('✅ CsvDataService: All requested CSVs already available in cache/memory.');
+      return;
+    }
+
+    // Mark loading future so concurrent requests wait.
+    _loadingFuture = () async {
+      try {
+        final path = await SoftAgriPath.build(drive);
+        final folderId = await drive.folderId(path);
+        await _downloadCsvsWithMemoryManagement(toDownload, folderId);
+        await _box.write(
+            _lastCsvSyncTimestampKey, DateTime.now().millisecondsSinceEpoch);
+      } finally {
+        _loadingFuture = null;
+      }
+    }();
+
+    await _loadingFuture;
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -135,16 +277,7 @@ class CsvDataService extends GetxController {
     final isCacheValid = lastSync != null &&
         DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastSync)) < _cacheDuration;
 
-    final List<Map<String, dynamic>> csvConfigs = [
-      {'key': _salesMasterCacheKey, 'filename': 'SalesInvoiceMaster.csv', 'priority': 1},
-      {'key': _salesDetailsCacheKey, 'filename': 'SalesInvoiceDetails.csv', 'priority': 1},
-      {'key': _itemMasterCacheKey, 'filename': 'ItemMaster.csv', 'priority': 1},
-      {'key': _itemDetailCacheKey, 'filename': 'ItemDetail.csv', 'priority': 1},
-      {'key': _accountMasterCacheKey, 'filename': 'AccountMaster.csv', 'priority': 2},
-      {'key': _allAccountsCacheKey, 'filename': 'AllAccounts.csv', 'priority': 2},
-      {'key': _customerInfoCacheKey, 'filename': 'CustomerInformation.csv', 'priority': 2},
-      {'key': _supplierInfoCacheKey, 'filename': 'SupplierInformation.csv', 'priority': 2},
-    ];
+    final List<Map<String, dynamic>> csvConfigs = List<Map<String, dynamic>>.from(_csvConfigs);
 
     bool needsDownload = forceDownload;
     if (!forceDownload) {

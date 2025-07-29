@@ -106,8 +106,12 @@ class SalesController extends GetxController with BaseRemoteController {
   /// Private method to load and process sales data from multiple CSVs.
   Future<void> _loadSales({bool forceRefresh = false}) async {
     try {
-      // 1. Load all necessary CSVs from Google Drive (or cache).
-      await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
+      // 1. Load only the CSVs required for the sales report.
+      await _csvDataService.loadCsvs([
+        'SalesInvoiceMaster.csv',
+        'SalesInvoiceDetails.csv',
+        'ItemMaster.csv',
+      ], forceDownload: forceRefresh);
 
       // Get the raw CSV string content from the service.
       final String salesMasterCsv = _csvDataService.salesMasterCsv.value;
@@ -144,11 +148,11 @@ class SalesController extends GetxController with BaseRemoteController {
       log('✅ SalesController: ItemMaster data parsed. Total items: ${itemMasterMaps.length}');
 
       // 3. Parse SalesInvoiceDetails.csv and group details by BillNo.
-      // 'BillNo', 'Itemcode', 'batchno', 'Packing' are crucial identifiers and kept as strings.
+      // 'Billno', 'Itemcode', 'batchno', 'Packing' are crucial identifiers and kept as strings.
       final List<Map<String, dynamic>> salesDetailsMaps = CsvUtils.toMaps(
         salesInvoiceDetailsCsv,
         stringColumns: [
-          'BillNo', 'Itemcode', 'batchno', 'Packing',
+          'Billno', 'Itemcode', 'batchno', 'Packing',
         ],
       );
       final Map<String, List<SalesItemDetail>> billNoToDetails = {};
