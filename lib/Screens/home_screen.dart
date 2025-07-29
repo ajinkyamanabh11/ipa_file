@@ -45,19 +45,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    // Initialize main screen animation controller
+    // Initialize main screen animation controller with reduced duration
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200), // Overall animation duration
+      duration: const Duration(milliseconds: 400), // Reduced from 1200ms for better performance
     );
 
-    // Define main screen slide animation
+    // Define main screen slide animation with less movement
     _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.2), // Starts 20% below its final position
+      begin: const Offset(0, 0.1), // Reduced from 0.2 for smoother animation
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _animationController,
-      curve: Curves.easeOutCubic, // A smooth accelerating then decelerating curve
+      curve: Curves.easeOut, // Simpler curve for better performance
     ));
 
     // Define main screen fade animation
@@ -66,23 +66,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _animationController,
-      curve: Curves.easeIn, // A gentle fade-in curve
+      curve: Curves.easeIn, // Keep simple fade-in curve
     ));
 
     // Start the main screen animation when the screen loads
-    _animationController.forward();
+    // Use addPostFrameCallback to ensure it runs after build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _animationController.forward();
+      }
+    });
 
-    // NEW: Initialize Drawer animation controller
+    // Initialize Drawer animation controller with reduced duration
     _drawerAnimationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800), // Duration for drawer content animation
+      duration: const Duration(milliseconds: 300), // Reduced from 800ms
     );
     _drawerSlideAnimation = Tween<Offset>(
-      begin: const Offset(-0.2, 0), // Starts slightly off-screen to the left
+      begin: const Offset(-0.1, 0), // Reduced from -0.2 for smoother animation
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _drawerAnimationController,
-      curve: Curves.easeOutCubic,
+      curve: Curves.easeOut, // Simpler curve
     ));
     _drawerFadeAnimation = Tween<double>(
       begin: 0.0,
@@ -92,10 +97,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       curve: Curves.easeIn,
     ));
 
-    // NEW: Trigger the drawer content animation when HomeScreen is initialized.
-    // This provides a consistent "pop-in" effect for the drawer contents
-    // whenever the drawer is presented during the app's lifecycle.
-    _drawerAnimationController.forward();
+    // Trigger drawer animation after a slight delay to avoid competing with main animation
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            _drawerAnimationController.forward();
+          }
+        });
+      }
+    });
   }
 
   @override
@@ -108,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// Navigate via **named route** so bindings fire
   void navigateTo(String route) => Get.toNamed(route);
 
-  // _buildGridItem: Now takes an index for staggered animations
+  // _buildGridItem: Optimized for better performance
   Widget _buildGridItem(
       String label,
       IconData icon,
@@ -116,16 +127,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       BuildContext context,
       int index, // Added index for staggered animation
       ) {
-    // Define an animation for each grid item to appear staggered
+    // Simplified animation for better performance
     final itemSlideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.5), // Each item slides up slightly
+      begin: const Offset(0, 0.2), // Reduced movement for smoother animation
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _animationController,
       curve: Interval(
-        (0.3 + index * 0.1).clamp(0.0, 1.0), // Start after main animation begins, stagger by 0.1s
-        1.0, // Ends at the same time as overall animation
-        curve: Curves.easeOutCubic,
+        (0.1 + index * 0.05).clamp(0.0, 0.8), // Reduced stagger delay and shortened interval
+        1.0,
+        curve: Curves.easeOut, // Simpler curve
       ),
     ));
 
@@ -135,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     ).animate(CurvedAnimation(
       parent: _animationController,
       curve: Interval(
-        (0.3 + index * 0.1).clamp(0.0, 1.0), // Same staggered timing as slide
+        (0.1 + index * 0.05).clamp(0.0, 0.8), // Same optimized timing
         1.0,
         curve: Curves.easeIn,
       ),

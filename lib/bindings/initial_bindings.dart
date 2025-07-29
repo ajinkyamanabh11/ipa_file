@@ -5,6 +5,7 @@ import 'package:demo/controllers/stock_report_controller.dart';
 import 'package:get/get.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:get_storage/get_storage.dart';
+import 'package:flutter/foundation.dart';
 
 import '../controllers/customerLedger_Controller.dart';
 import '../controllers/google_signin_controller.dart';
@@ -18,46 +19,82 @@ import '../services/google_drive_service.dart';
 class InitialBindings {
   static bool _done = false;
 
-  /// Call once from main.dart to register every global singleton.
+  /// Call once from main.dart to register every global singleton.
   static Future<void> ensure() async {
     if (_done) return;
     _done = true;
 
-    // Initialize GetStorage before any controller that uses it
-    await GetStorage.init(); // IMPORTANT: Initialize GetStorage here
+    try {
+      // Initialize GetStorage first (if not already done)
+      if (!GetStorage.isInitialized) {
+        await GetStorage.init().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            debugPrint('GetStorage initialization timeout');
+          },
+        );
+      }
 
-    // 1️⃣ Google Sign‑in controller (never disposed)
-    Get.put<GoogleSignInController>(GoogleSignInController(), permanent: true);
+      // 1️⃣ Google Sign‑in controller (never disposed) - non-blocking
+      Get.put<GoogleSignInController>(GoogleSignInController(), permanent: true);
 
-    // 2️⃣ Google Drive helper (async init; never disposed)
-    await Get.putAsync<GoogleDriveService>(
-          () => GoogleDriveService.init(),
-      permanent: true,
-    );
+      // 2️⃣ Initialize other essential services in parallel
+      await Future.wait([
+        _initializeGoogleDriveService(),
+        _initializeCsvDataService(),
+        _initializeControllers(),
+      ], eagerError: false); // Continue even if some services fail
 
-    // 🔴 NEW: Centralized CSV Data Service
-    Get.put<CsvDataService>(CsvDataService(), permanent: true);
+    } catch (e) {
+      debugPrint('InitialBindings error: $e');
+      // Continue app execution even if some services fail
+    }
+  }
 
-    // 🔴 NEW: Theme Controller (permanent singleton)
-    Get.put<ThemeController>(ThemeController(), permanent: true); // ADD THIS
+  // Separate method for Google Drive service with timeout and error handling
+  static Future<void> _initializeGoogleDriveService() async {
+    try {
+      await Get.putAsync<GoogleDriveService>(
+        () => GoogleDriveService.init().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            debugPrint('GoogleDriveService initialization timeout');
+            return GoogleDriveService(); // Return basic instance
+          },
+        ),
+        permanent: true,
+      );
+    } catch (e) {
+      debugPrint('GoogleDriveService initialization failed: $e');
+      // Put a basic instance so app doesn't crash
+      Get.put<GoogleDriveService>(GoogleDriveService(), permanent: true);
+    }
+  }
 
-    // 3️⃣ Core app‑wide controllers
-    Get.put<CustomerLedgerController>(
-      CustomerLedgerController(),
-      permanent: true,
-    );
+  // Separate method for CSV data service
+  static Future<void> _initializeCsvDataService() async {
+    try {
+      Get.put<CsvDataService>(CsvDataService(), permanent: true);
+    } catch (e) {
+      debugPrint('CsvDataService initialization failed: $e');
+    }
+  }
 
-    // Item / stock logic can be recreated when needed (fenix)
-    Get.lazyPut<ItemTypeController>(() => ItemTypeController(), fenix: true);
+  // Initialize other controllers
+  static Future<void> _initializeControllers() async {
+    try {
+      // Core app‑wide controllers
+      Get.put<CustomerLedgerController>(
+        CustomerLedgerController(),
+        permanent: true,
+      );
 
-    // Batch‑wise profit (permanent singleton)
-    // Get.lazyPut<ProfitReportController>(() => ProfitReportController(), fenix: true);
-    // (If you want it permanent, change to Get.put)
-    // If ProfitReportController is used frequently and needs to be alive, permanent is fine.
-    // If it's only for a specific screen and can be disposed, fenix is fine.
-    // For now, let's assume it's okay as you had it or as lazyPut.
-
-    Get.lazyPut<StockReportController>(() => StockReportController(), fenix: true);
-    Get.lazyPut<SalesController>(() => SalesController(), fenix: true);
+      // Item / stock logic can be recreated when needed (fenix)
+      Get.lazyPut<ItemTypeController>(() => ItemTypeController(), fenix: true);
+      Get.lazyPut<StockReportController>(() => StockReportController(), fenix: true);
+      Get.lazyPut<SalesController>(() => SalesController(), fenix: true);
+    } catch (e) {
+      debugPrint('Controllers initialization failed: $e');
+    }
   }
 }
