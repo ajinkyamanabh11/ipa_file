@@ -13,6 +13,7 @@ import '../controllers/sales_controller.dart';
 import '../controllers/theme_controller.dart';
 import '../services/CsvDataServices.dart';
 import '../services/google_drive_service.dart';
+import '../services/background_processor.dart';
 import '../util/memory_monitor.dart'; // NEW IMPORT
 
 class InitialBindings {
@@ -28,6 +29,9 @@ class InitialBindings {
 
     // 🔴 NEW: Memory Monitor (initialize first for early monitoring)
     Get.put<MemoryMonitor>(MemoryMonitor(), permanent: true);
+
+    // 🔴 NEW: Background Processor (initialize early for heavy operations)
+    Get.put<BackgroundProcessor>(BackgroundProcessor(), permanent: true);
 
     // 1️⃣ Google Sign‑in controller (never disposed)
     Get.put<GoogleSignInController>(GoogleSignInController(), permanent: true);

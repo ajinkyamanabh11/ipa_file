@@ -3,12 +3,14 @@ import 'package:intl/intl.dart';
 import '../constants/paths.dart';
 import '../services/CsvDataServices.dart'; // Corrected service name import
 import '../services/google_drive_service.dart';
+import '../services/background_processor.dart';
 import '../util/csv_utils.dart';
 import 'dart:developer';
 
 class ProfitReportController extends GetxController {
   final drive = Get.find<GoogleDriveService>();
   final CsvDataService _csvDataService = Get.find<CsvDataService>(); // Get CsvDataService instance
+  final BackgroundProcessor _backgroundProcessor = Get.find<BackgroundProcessor>();
 
   DateTime fromDate = DateTime.now();
   DateTime toDate = DateTime.now();

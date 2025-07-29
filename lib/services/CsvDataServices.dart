@@ -6,11 +6,13 @@ import 'dart:isolate';
 
 import '../constants/paths.dart';
 import 'google_drive_service.dart';
+import 'background_processor.dart';
 import 'package:flutter/foundation.dart'; // for compute
 import '../util/csv_worker.dart'; // your new isolate parser
 
 class CsvDataService extends GetxController {
   final GoogleDriveService drive = Get.find<GoogleDriveService>();
+  final BackgroundProcessor _backgroundProcessor = Get.find<BackgroundProcessor>();
   final GetStorage _box = GetStorage();
   Future<void>? _loadingFuture;
   bool _hasDownloadedOnce = false;
@@ -204,15 +206,19 @@ class CsvDataService extends GetxController {
         final fileId = await drive.fileId(config['filename'], folderId);
         final csvData = await drive.downloadCsv(fileId);
 
-        // 💡 Offload parsing to isolate
-        final result = await compute(parseAndCacheCsv, {
-          'key': config['key'],
-          'csvData': csvData,
-        });
+        // 💡 Offload parsing to background processor with progress tracking
+        final result = await _backgroundProcessor.processCsvData(
+          csvData: csvData,
+          taskName: 'Processing ${config['filename']}',
+          shouldParse: false, // We'll store raw CSV and parse on demand
+          onProgress: (progress) {
+            log('📊 CsvDataService: Processing ${config['filename']} - ${(progress * 100).toStringAsFixed(1)}%');
+          },
+        );
 
-        final String key = result['key'];
-        final String parsedCsv = result['csvData'];
-        final double estimatedSize = result['estimatedSizeMB'];
+        final String key = config['key'];
+        final String parsedCsv = csvData; // Store raw CSV for now
+        final double estimatedSize = (csvData.length * 2) / (1024 * 1024);
 
         memoryUsageMB.value += estimatedSize;
         _populateReactiveVarFromCache(key, parsedCsv);
@@ -220,7 +226,7 @@ class CsvDataService extends GetxController {
 
         log('📥 CsvDataService: Downloaded $key (${estimatedSize.toStringAsFixed(1)}MB)');
 
-        await Future.delayed(Duration(milliseconds: 100));
+        await Future.delayed(Duration(milliseconds: 50)); // Reduced delay
 
       } catch (e, st) {
         log('❌ CsvDataService: Failed to download ${config['filename']}: $e\n$st');
@@ -272,6 +278,55 @@ class CsvDataService extends GetxController {
     log('🗑️ CsvDataService: All CSV cache cleared.');
   }
 
+  /// Parse CSV data on-demand using background processor
+  Future<List<Map<String, dynamic>>> parseCsvData(String csvKey, {String? taskName}) async {
+    String csvData = '';
+    
+    switch (csvKey) {
+      case _salesMasterCacheKey: csvData = salesMasterCsv.value; break;
+      case _salesDetailsCacheKey: csvData = salesDetailsCsv.value; break;
+      case _itemMasterCacheKey: csvData = itemMasterCsv.value; break;
+      case _itemDetailCacheKey: csvData = itemDetailCsv.value; break;
+      case _accountMasterCacheKey: csvData = accountMasterCsv.value; break;
+      case _allAccountsCacheKey: csvData = allAccountsCsv.value; break;
+      case _customerInfoCacheKey: csvData = customerInfoCsv.value; break;
+      case _supplierInfoCacheKey: csvData = supplierInfoCsv.value; break;
+    }
+
+    if (csvData.isEmpty) {
+      log('⚠️ CsvDataService: No CSV data found for key: $csvKey');
+      return [];
+    }
+
+    return await _backgroundProcessor.processCsvData(
+      csvData: csvData,
+      taskName: taskName ?? 'Parsing $csvKey',
+      shouldParse: true,
+      onProgress: (progress) {
+        log('📊 CsvDataService: Parsing $csvKey - ${(progress * 100).toStringAsFixed(1)}%');
+      },
+    );
+  }
+
+  /// Get parsed data with caching to avoid re-parsing
+  final Map<String, List<Map<String, dynamic>>> _parsedDataCache = {};
+  
+  Future<List<Map<String, dynamic>>> getCachedParsedData(String csvKey) async {
+    if (_parsedDataCache.containsKey(csvKey)) {
+      return _parsedDataCache[csvKey]!;
+    }
+
+    final parsed = await parseCsvData(csvKey);
+    _parsedDataCache[csvKey] = parsed;
+    return parsed;
+  }
+
+  /// Clear parsed data cache to free memory
+  void clearParsedCache() {
+    _parsedDataCache.clear();
+    log('🧹 CsvDataService: Cleared parsed data cache');
+  }
+
   /// Get current memory usage estimate
   double getCurrentMemoryUsageMB() {
     double totalSize = 0.0;
@@ -283,6 +338,11 @@ class CsvDataService extends GetxController {
     totalSize += (allAccountsCsv.value.length * 2) / (1024 * 1024);
     totalSize += (customerInfoCsv.value.length * 2) / (1024 * 1024);
     totalSize += (supplierInfoCsv.value.length * 2) / (1024 * 1024);
+
+    // Add parsed cache size
+    for (final entry in _parsedDataCache.entries) {
+      totalSize += (entry.value.length * 0.5) / 1024; // Rough estimate for parsed data
+    }
 
     memoryUsageMB.value = totalSize;
     return totalSize;
