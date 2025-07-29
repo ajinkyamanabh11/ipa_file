@@ -48,6 +48,7 @@ dependencies:
   connectivity_plus: ^6.1.4
   get_storage: ^2.1.1
   flutter_launcher_icons: ^0.14.4
+  fixnum: ^1.1.1
 
 dev_dependencies:
   flutter_test:

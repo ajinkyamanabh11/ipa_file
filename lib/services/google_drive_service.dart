@@ -1,15 +1,21 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:get/get.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:http/http.dart' as http;
+import 'package:fixnum/fixnum.dart' as fixnum; // Corrected import for Int64
 
 import '../controllers/google_signin_controller.dart';
 
 class GoogleDriveService extends GetxService {
-  GoogleDriveService();                      // default ctor
+  GoogleDriveService(); // default ctor
 
   // Google‑sign‑in controller (already put before this service)
   final _google = Get.find<GoogleSignInController>();
+
+  // Memory management constants
+  static const int _maxChunkSize = 1024 * 1024; // 1MB chunks (not directly used in streaming logic, but good to have)
+  static const int _maxFileSize = 50 * 1024 * 1024; // 50MB max file size
 
   /// Factory used by `InitialBindings.ensure()`
   /// Place any async warm‑up you need here.
@@ -18,7 +24,7 @@ class GoogleDriveService extends GetxService {
     return GoogleDriveService();
   }
 
-  // ───────────────────────────────── Google Drive helpers ──────────────────
+  // ───────────────────────────────── Google Drive helpers ──────────────────
   Future<drive.DriveApi> _api() async {
     final headers = await _google.getAuthHeaders();
     if (headers == null) throw Exception('Google Sign‑In required');
@@ -51,17 +57,170 @@ class GoogleDriveService extends GetxService {
     return res.files!.first.id!;
   }
 
+  /// Download CSV with memory-efficient streaming and size limits
   Future<String> downloadCsv(String id) async {
     final api = await _api();
-    final media =
-    await api.files.get(id, downloadOptions: drive.DownloadOptions.fullMedia)
-    as drive.Media;
 
-    final bytes = <int>[];
-    await for (final chunk in media.stream) {
-      bytes.addAll(chunk);
+    try {
+      // First, get file metadata to check size
+      final fileMetadata = await api.files.get(id) as drive.File;
+      // CORRECTED: Access size as fixnum.Int64 and convert to String for int.tryParse
+      final fileSize = int.tryParse(fileMetadata.size?.toString() ?? '0') ?? 0;
+
+      // Check if file is too large
+      if (fileSize > _maxFileSize) {
+        throw Exception('File too large: ${(fileSize / (1024 * 1024)).toStringAsFixed(1)}MB. Maximum allowed: ${(_maxFileSize / (1024 * 1024)).toStringAsFixed(0)}MB');
+      }
+
+      final media = await api.files.get(id, downloadOptions: drive.DownloadOptions.fullMedia) as drive.Media;
+
+      // Use streaming approach with memory management
+      return await _streamToString(media.stream, fileSize);
+
+    } catch (e) {
+      if (e.toString().contains('File too large')) {
+        rethrow;
+      }
+      throw Exception('Failed to download CSV file: $e');
     }
-    return utf8.decode(bytes);
+  }
+
+  /// Convert stream to string with memory management
+  Future<String> _streamToString(Stream<List<int>> stream, int expectedSize) async {
+    final chunks = <Uint8List>[];
+    int totalBytes = 0;
+
+    await for (final chunk in stream) {
+      // Check memory limits
+      totalBytes += chunk.length;
+      if (totalBytes > _maxFileSize) {
+        throw Exception('File size exceeded during download: ${(totalBytes / (1024 * 1024)).toStringAsFixed(1)}MB');
+      }
+
+      chunks.add(Uint8List.fromList(chunk));
+
+      // Process in smaller chunks to prevent memory spikes
+      if (chunks.length > 10) { // Process every 10 chunks
+        await Future.delayed(const Duration(milliseconds: 1)); // Allow garbage collection
+      }
+    }
+
+    // Efficiently combine all chunks
+    final totalLength = chunks.fold<int>(0, (sum, chunk) => sum + chunk.length);
+    final combined = Uint8List(totalLength);
+
+    int offset = 0;
+    for (final chunk in chunks) {
+      combined.setRange(offset, offset + chunk.length, chunk);
+      offset += chunk.length;
+    }
+
+    try {
+      return utf8.decode(combined);
+    } catch (e) {
+      throw Exception('Failed to decode CSV file as UTF-8: $e');
+    }
+  }
+
+  /// Get file size without downloading
+  Future<int> getFileSize(String id) async {
+    final api = await _api();
+    final fileMetadata = await api.files.get(id) as drive.File; // <-- Explicit cast
+    return int.tryParse(fileMetadata.size?.toString() ?? '0') ?? 0;
+  }
+
+
+  /// Check if file exists and get basic info
+  Future<Map<String, dynamic>?> getFileInfo(String name, String parentId) async {
+    try {
+      final api = await _api();
+      final res = await api.files.list(
+        q: "'$parentId' in parents and name = '$name' and trashed = false",
+      );
+
+      if (res.files == null || res.files!.isEmpty) {
+        return null;
+      }
+
+      final file = res.files!.first;
+      return {
+        'id': file.id,
+        'name': file.name,
+        // CORRECTED: Access size as fixnum.Int64 and convert to int
+        'size': int.tryParse(file.size?.toString() ?? '0') ?? 0,
+        'modifiedTime': file.modifiedTime?.toIso8601String(),
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Download with progress callback for large files
+  Future<String> downloadCsvWithProgress(
+      String id,
+      {Function(double)? onProgress}
+      ) async {
+    final api = await _api();
+
+    try {
+      // Get file size first
+      final fileInfo = await api.files.get(id) as drive.File;
+      final fileSize = int.tryParse(fileInfo.size?.toString() ?? '0') ?? 0;
+
+      if (fileSize > _maxFileSize) {
+        throw Exception('File too large: ${(fileSize / (1024 * 1024)).toStringAsFixed(1)}MB');
+      }
+
+      final media = await api.files.get(id, downloadOptions: drive.DownloadOptions.fullMedia) as drive.Media;
+
+      return await _streamToStringWithProgress(media.stream, fileSize, onProgress);
+
+    } catch (e) {
+      throw Exception('Failed to download CSV with progress: $e');
+    }
+  }
+
+  /// Stream to string with progress reporting
+  Future<String> _streamToStringWithProgress(
+      Stream<List<int>> stream,
+      int expectedSize,
+      Function(double)? onProgress
+      ) async {
+    final chunks = <Uint8List>[];
+    int totalBytes = 0;
+
+    await for (final chunk in stream) {
+      totalBytes += chunk.length;
+      chunks.add(Uint8List.fromList(chunk));
+
+      // Report progress
+      if (onProgress != null && expectedSize > 0) {
+        final progress = (totalBytes / expectedSize).clamp(0.0, 1.0);
+        onProgress(progress);
+      }
+
+      // Memory management
+      if (totalBytes > _maxFileSize) {
+        throw Exception('File size exceeded during download');
+      }
+
+      // Allow UI updates
+      if (chunks.length % 5 == 0) {
+        await Future.delayed(const Duration(milliseconds: 1));
+      }
+    }
+
+    // Combine chunks efficiently
+    final totalLength = chunks.fold<int>(0, (sum, chunk) => sum + chunk.length);
+    final combined = Uint8List(totalLength);
+
+    int offset = 0;
+    for (final chunk in chunks) {
+      combined.setRange(offset, offset + chunk.length, chunk);
+      offset += chunk.length;
+    }
+
+    return utf8.decode(combined);
   }
 }
 

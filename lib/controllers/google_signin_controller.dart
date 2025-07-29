@@ -21,21 +21,41 @@ class GoogleSignInController extends GetxController {
   );
 
   Rx<GoogleSignInAccount?> user = Rx<GoogleSignInAccount?>(null);
+  RxBool isInitializing = false.obs;
 
   bool get isSignedIn => user.value != null;
 
   Future<GoogleSignInAccount?> silentLogin() async {
-    final account = await _googleSignIn.signInSilently();
-    if (account != null) {
-      user.value = account;
-      log("Silent login: ${account.email}");
+    try {
+      // Add timeout to prevent indefinite blocking
+      final account = await _googleSignIn.signInSilently().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          log("Silent login timeout");
+          return null;
+        },
+      );
+      if (account != null) {
+        user.value = account;
+        log("Silent login: ${account.email}");
+      }
+      return account;
+    } catch (e) {
+      log("Silent login error: $e");
+      return null;
     }
-    return account;
   }
 
   Future<void> login() async {
     try {
-      final account = await _googleSignIn.signIn();
+      // Add timeout for manual login as well
+      final account = await _googleSignIn.signIn().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          log("Manual login timeout");
+          return null;
+        },
+      );
       if (account != null) {
         user.value = account;
         log("Logged in as: ${account.email}");
@@ -47,9 +67,19 @@ class GoogleSignInController extends GetxController {
   }
 
   Future<void> logout() async {
-    await _googleSignIn.disconnect();
-    user.value = null;
-    log("Logged out.");
+    try {
+      await _googleSignIn.disconnect().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          log("Logout timeout, proceeding anyway");
+        },
+      );
+    } catch (e) {
+      log("Logout error: $e");
+    } finally {
+      user.value = null;
+      log("Logged out.");
+    }
   }
 
   Future<Map<String, String>?> getAuthHeaders() async {
@@ -60,7 +90,13 @@ class GoogleSignInController extends GetxController {
       return null;
     }
     try {
-      final headers = await account.authHeaders;
+      final headers = await account.authHeaders.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          log("getAuthHeaders timeout");
+          return <String, String>{};
+        },
+      );
       log("getAuthHeaders: Successfully retrieved auth headers.");
       return headers;
     } catch (e) {
@@ -82,16 +118,33 @@ class GoogleSignInController extends GetxController {
       }
     });
 
-    // Attempt silent sign-in on app startup
-    _googleSignIn.signInSilently().then((account) {
+    // Perform silent sign-in asynchronously without blocking initialization
+    _performAsyncSilentSignIn();
+  }
+
+  // Separate method for async silent sign-in to avoid blocking onInit
+  void _performAsyncSilentSignIn() async {
+    isInitializing.value = true;
+    try {
+      // Use a shorter timeout for initial silent sign-in
+      final account = await _googleSignIn.signInSilently().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          log("Initial silent sign-in timeout - proceeding without login");
+          return null;
+        },
+      );
+
       if (account != null) {
         user.value = account;
         log("Initial silent sign-in successful: ${account.email}");
       } else {
         log("Initial silent sign-in: No user found.");
       }
-    }).catchError((e) {
+    } catch (e) {
       log("Initial silent sign-in error: $e");
-    });
+    } finally {
+      isInitializing.value = false;
+    }
   }
 }

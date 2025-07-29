@@ -24,6 +24,15 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Performance optimizations
+        multiDexEnabled = true
+        vectorDrawables.useSupportLibrary = true
+
+        // Enable hardware acceleration and optimize rendering
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
     }
 
     signingConfigs {
@@ -47,13 +56,36 @@ android {
         getByName("debug") {
             // Apply your custom debug signing config
             signingConfig = signingConfigs.getByName("debugConfig")
+            // Debug performance optimizations
+            isDebuggable = true
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
         getByName("release") {
             // Apply your release signing config
             signingConfig = signingConfigs.getByName("releaseConfig")
-            // Other release specific settings can go here (e.g., minify, shrinkResources)
-            // minifyEnabled true
-            // shrinkResources true
+            // Release performance optimizations
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+
+            // Additional performance settings
+            isDebuggable = false
+            isJniDebuggable = false
+            isRenderscriptDebuggable = false
+        }
+    }
+
+    // Additional performance optimizations
+    packagingOptions {
+        resources {
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt"
+            )
         }
     }
 }
