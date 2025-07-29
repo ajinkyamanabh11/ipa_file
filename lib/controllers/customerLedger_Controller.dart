@@ -98,8 +98,13 @@ class CustomerLedgerController extends GetxController {
       error.value = null;
       requiresSignIn(false);
 
-      // 🔴 CRITICAL CHANGE: Load all necessary CSVs via CsvDataService
-      await _csvDataService.loadAllCsvs(forceDownload: forceRefreshCsv);
+      // 🔴 CRITICAL CHANGE: Load only required CSVs via CsvDataService
+      await _csvDataService.loadCsvs([
+        'AccountMaster.csv',
+        'AllAccounts.csv',
+        'CustomerInformation.csv',
+        'SupplierInformation.csv',
+      ], forceDownload: forceRefreshCsv);
 
       // Check if the necessary CSVs from CsvDataService are available
       if (_csvDataService.accountMasterCsv.value.isEmpty ||

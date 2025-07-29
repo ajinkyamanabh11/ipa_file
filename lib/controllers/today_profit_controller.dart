@@ -30,9 +30,13 @@ class TodayProfitController extends GetxController {
     log('📆 TodayProfitController: Loading today\'s profit for $today');
 
     try {
-      // 🔴 CRITICAL CHANGE: Use the centralized CsvDataService to get CSV data.
-      // Force download here to ensure the dashboard profit is always fresh.
-      await _csvDataService.loadAllCsvs(forceDownload: true);
+      // Load only necessary CSVs for today's profit calculation.
+      await _csvDataService.loadCsvs([
+        'SalesInvoiceMaster.csv',
+        'SalesInvoiceDetails.csv',
+        'ItemMaster.csv',
+        'ItemDetail.csv',
+      ], forceDownload: true);
 
       final masterCsv = _csvDataService.salesMasterCsv.value;
       final detailsCsv = _csvDataService.salesDetailsCsv.value;
