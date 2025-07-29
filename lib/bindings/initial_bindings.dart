@@ -13,6 +13,7 @@ import '../controllers/sales_controller.dart';
 import '../controllers/theme_controller.dart';
 import '../services/CsvDataServices.dart';
 import '../services/google_drive_service.dart';
+import '../services/data_loading_service.dart';
 import '../util/memory_monitor.dart'; // NEW IMPORT
 
 class InitialBindings {
@@ -40,6 +41,9 @@ class InitialBindings {
 
     // 🔴 NEW: Centralized CSV Data Service
     Get.put<CsvDataService>(CsvDataService(), permanent: true);
+
+    // 🔴 NEW: Data Loading Service (coordinates all data loading)
+    Get.put<DataLoadingService>(DataLoadingService(), permanent: true);
 
     // 🔴 NEW: Theme Controller (permanent singleton)
     Get.put<ThemeController>(ThemeController(), permanent: true); // ADD THIS

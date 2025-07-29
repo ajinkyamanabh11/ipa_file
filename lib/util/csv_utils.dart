@@ -72,4 +72,12 @@ class CsvUtils {
     }
     return result;
   }
+
+  /// Isolate-compatible version of toMaps for use with compute
+  static List<Map<String, dynamic>> toMapsFromArgs(Map<String, dynamic> args) {
+    final String csvData = args['csvData'];
+    final List<String> stringColumns = List<String>.from(args['stringColumns'] ?? []);
+    
+    return toMaps(csvData, stringColumns: stringColumns);
+  }
 }
