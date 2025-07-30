@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'dart:developer'; // For logging
@@ -92,12 +91,30 @@ class SalesController extends GetxController with BaseRemoteController {
   // Observable list to hold the processed sales data, now using the SalesEntry model.
   final sales = <SalesEntry>[].obs;
 
+  // Track loading state and processing progress
+  final RxBool isProcessingLargeDataset = false.obs;
+  final RxDouble processingProgress = 0.0.obs;
+  final RxString lastError = ''.obs;
+
+  // Cache validation
+  DateTime? _lastProcessedTime;
+  bool _hasProcessedData = false;
+
   @override
   Future<void> onInit() async {
     super.onInit();
     log('[SalesController] Initializing and loading sales data...');
-    // Guard ensures that the async operation is handled safely (e.g., preventing multiple calls).
-    guard(() => _loadSales(forceRefresh: true));
+
+    // Check if CSV service already has data loaded
+    if (_csvDataService.hasData('salesMasterCsv') &&
+        _csvDataService.hasData('salesDetailsCsv') &&
+        _csvDataService.hasData('itemMasterCsv')) {
+      log('[SalesController] CSV data already available, processing...');
+      guard(() => _processSalesData());
+    } else {
+      // Guard ensures that the async operation is handled safely (e.g., preventing multiple calls).
+      guard(() => _loadSales(forceRefresh: false));
+    }
   }
 
   /// Public method to trigger fetching sales data, with an option to force a fresh download.
@@ -106,9 +123,35 @@ class SalesController extends GetxController with BaseRemoteController {
   /// Private method to load and process sales data from multiple CSVs.
   Future<void> _loadSales({bool forceRefresh = false}) async {
     try {
+      lastError.value = '';
+
+      // Check if we already have processed data and it's recent (unless force refresh)
+      if (!forceRefresh && _hasProcessedData && _lastProcessedTime != null) {
+        final timeSinceLastProcess = DateTime.now().difference(_lastProcessedTime!);
+        if (timeSinceLastProcess < Duration(minutes: 30) && sales.isNotEmpty) {
+          log('[SalesController] Using recently processed sales data');
+          return;
+        }
+      }
+
       // 1. Load all necessary CSVs from Google Drive (or cache).
       await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
 
+      // 2. Process the data
+      await _processSalesData();
+
+    } catch (e, st) {
+      log('[SalesController] ❌ Error loading sales data: $e\n$st');
+      lastError.value = 'Failed to load sales data: ${e.toString()}';
+      sales.clear(); // Clear data on error
+    } finally {
+      log('[SalesController] Loading finished.');
+    }
+  }
+
+  /// Process sales data from CSV service
+  Future<void> _processSalesData() async {
+    try {
       // Get the raw CSV string content from the service.
       final String salesMasterCsv = _csvDataService.salesMasterCsv.value;
       final String salesInvoiceDetailsCsv = _csvDataService.salesDetailsCsv.value;
@@ -131,33 +174,63 @@ class SalesController extends GetxController with BaseRemoteController {
 
       log('⚡ SalesController: Starting data processing...');
 
-      // 2. Parse ItemMaster.csv into a lookup map for efficient ItemName retrieval.
-      // Ensure 'Itemcode' and 'ItemName' are treated as strings to preserve their exact values.
-      final List<Map<String, dynamic>> itemMasterMaps = CsvUtils.toMaps(
-        itemMasterCsv,
-        stringColumns: ['ItemCode', 'ItemName'],
-      );
-      final Map<String, String> itemCodeToName = {
-        for (var item in itemMasterMaps)
-          (item['ItemCode']?.toString() ?? ''): (item['ItemName']?.toString() ?? '')
-      };
-      log('✅ SalesController: ItemMaster data parsed. Total items: ${itemMasterMaps.length}');
+      // Check if we're dealing with a large dataset
+      final salesMasterLines = salesMasterCsv.split('\n').length;
+      final salesDetailsLines = salesInvoiceDetailsCsv.split('\n').length;
+      isProcessingLargeDataset.value = (salesMasterLines > 5000 || salesDetailsLines > 10000);
 
-      // 3. Parse SalesInvoiceDetails.csv and group details by BillNo.
-      // 'BillNo', 'Itemcode', 'batchno', 'Packing' are crucial identifiers and kept as strings.
-      final List<Map<String, dynamic>> salesDetailsMaps = CsvUtils.toMaps(
-        salesInvoiceDetailsCsv,
-        stringColumns: [
-          'BillNo', 'Itemcode', 'batchno', 'Packing',
-        ],
-      );
-      final Map<String, List<SalesItemDetail>> billNoToDetails = {};
-      for (var detail in salesDetailsMaps) {
+      if (isProcessingLargeDataset.value) {
+        log('📊 SalesController: Large dataset detected, processing in chunks...');
+        await _processLargeDataset(salesMasterCsv, salesInvoiceDetailsCsv, itemMasterCsv);
+      } else {
+        await _processNormalDataset(salesMasterCsv, salesInvoiceDetailsCsv, itemMasterCsv);
+      }
+
+      _hasProcessedData = true;
+      _lastProcessedTime = DateTime.now();
+
+      log('✅ SalesController: Sales data processed successfully. Total sales entries: ${sales.length}');
+
+    } catch (e, st) {
+      log('[SalesController] ❌ Error processing sales data: $e\n$st');
+      lastError.value = 'Failed to process sales data: ${e.toString()}';
+      sales.clear();
+      rethrow;
+    }
+  }
+
+  /// Process large dataset in chunks to prevent memory issues
+  Future<void> _processLargeDataset(String salesMasterCsv, String salesInvoiceDetailsCsv, String itemMasterCsv) async {
+    const int chunkSize = 1000; // Process 1000 sales entries at a time
+    processingProgress.value = 0.0;
+
+    // 2. Parse ItemMaster.csv into a lookup map for efficient ItemName retrieval.
+    final List<Map<String, dynamic>> itemMasterMaps = CsvUtils.toMaps(
+      itemMasterCsv,
+      stringColumns: ['ItemCode', 'ItemName'],
+    );
+    final Map<String, String> itemCodeToName = {
+      for (var item in itemMasterMaps)
+        (item['ItemCode']?.toString() ?? ''): (item['ItemName']?.toString() ?? '')
+    };
+    log('✅ SalesController: ItemMaster data parsed. Total items: ${itemMasterMaps.length}');
+
+    // 3. Parse SalesInvoiceDetails.csv and group details by BillNo.
+    final List<Map<String, dynamic>> salesDetailsMaps = CsvUtils.toMaps(
+      salesInvoiceDetailsCsv,
+      stringColumns: [
+        'BillNo', 'Itemcode', 'batchno', 'Packing',
+      ],
+    );
+
+    // Group details by BillNo in chunks to prevent memory spikes
+    final Map<String, List<SalesItemDetail>> billNoToDetails = {};
+    for (int i = 0; i < salesDetailsMaps.length; i += chunkSize) {
+      final chunk = salesDetailsMaps.skip(i).take(chunkSize).toList();
+
+      for (var detail in chunk) {
         final billNo = detail['Billno']?.toString() ?? '';
-        if (billNo.isEmpty) {
-          log('⚠️ SalesController: Skipping SalesInvoiceDetails entry with empty BillNo.');
-          continue; // Skip entries without a valid BillNo
-        }
+        if (billNo.isEmpty) continue;
 
         final itemCode = detail['Itemcode']?.toString() ?? '';
         final batchNo = detail['batchno']?.toString() ?? '';
@@ -184,20 +257,29 @@ class SalesController extends GetxController with BaseRemoteController {
         // Add the detail to the list for its corresponding BillNo.
         billNoToDetails.putIfAbsent(billNo, () => []).add(salesItemDetail);
       }
-      log('✅ SalesController: SalesInvoiceDetails data parsed and grouped. Number of BillNo groups: ${billNoToDetails.length}');
 
-      // 4. Process SalesInvoiceMaster.csv and combine with the grouped details.
-      final List<Map<String, dynamic>> salesMasterMaps = CsvUtils.toMaps(
-        salesMasterCsv,
-        stringColumns: [
-          'Billno',
-          'invoicedate', // Keep as string for parsing
-          'entrydate',   // Keep as string for parsing
-        ],
-      );
+      // Update progress and allow UI updates
+      processingProgress.value = (i + chunkSize) / salesDetailsMaps.length * 0.5; // 50% for details processing
+      await Future.delayed(Duration(milliseconds: 10));
+    }
 
-      final List<SalesEntry> processedSales = [];
-      for (var m in salesMasterMaps) {
+    log('✅ SalesController: SalesInvoiceDetails data parsed and grouped. Number of BillNo groups: ${billNoToDetails.length}');
+
+    // 4. Process SalesInvoiceMaster.csv in chunks
+    final List<Map<String, dynamic>> salesMasterMaps = CsvUtils.toMaps(
+      salesMasterCsv,
+      stringColumns: [
+        'Billno',
+        'invoicedate', // Keep as string for parsing
+        'entrydate',   // Keep as string for parsing
+      ],
+    );
+
+    final List<SalesEntry> processedSales = [];
+    for (int i = 0; i < salesMasterMaps.length; i += chunkSize) {
+      final chunk = salesMasterMaps.skip(i).take(chunkSize).toList();
+
+      for (var m in chunk) {
         final String billNo = m['Billno']?.toString() ?? '';
         final String accountName = m['accountname']?.toString() ?? '';
         final String paymentMode = m['paymentmode']?.toString() ?? '';
@@ -231,15 +313,119 @@ class SalesController extends GetxController with BaseRemoteController {
         );
       }
 
-      sales.value = processedSales; // Update the observable list
-      log('✅ SalesController: Sales data processed successfully with details. Total sales entries: ${sales.length}');
-
-    } catch (e, st) {
-      log('[SalesController] ❌ Error loading sales data: $e\n$st');
-      sales.clear(); // Clear data on error
-    } finally {
-      log('[SalesController] Loading finished. isLoadingSales: false');
+      // Update progress and allow UI updates
+      final masterProgress = (i + chunkSize) / salesMasterMaps.length * 0.5; // 50% for master processing
+      processingProgress.value = 0.5 + masterProgress;
+      await Future.delayed(Duration(milliseconds: 10));
     }
+
+    sales.value = processedSales; // Update the observable list
+    processingProgress.value = 1.0;
+  }
+
+  /// Process normal-sized dataset
+  Future<void> _processNormalDataset(String salesMasterCsv, String salesInvoiceDetailsCsv, String itemMasterCsv) async {
+    // 2. Parse ItemMaster.csv into a lookup map for efficient ItemName retrieval.
+    // Ensure 'Itemcode' and 'ItemName' are treated as strings to preserve their exact values.
+    final List<Map<String, dynamic>> itemMasterMaps = CsvUtils.toMaps(
+      itemMasterCsv,
+      stringColumns: ['ItemCode', 'ItemName'],
+    );
+    final Map<String, String> itemCodeToName = {
+      for (var item in itemMasterMaps)
+        (item['ItemCode']?.toString() ?? ''): (item['ItemName']?.toString() ?? '')
+    };
+    log('✅ SalesController: ItemMaster data parsed. Total items: ${itemMasterMaps.length}');
+
+    // 3. Parse SalesInvoiceDetails.csv and group details by BillNo.
+    // 'BillNo', 'Itemcode', 'batchno', 'Packing' are crucial identifiers and kept as strings.
+    final List<Map<String, dynamic>> salesDetailsMaps = CsvUtils.toMaps(
+      salesInvoiceDetailsCsv,
+      stringColumns: [
+        'BillNo', 'Itemcode', 'batchno', 'Packing',
+      ],
+    );
+    final Map<String, List<SalesItemDetail>> billNoToDetails = {};
+    for (var detail in salesDetailsMaps) {
+      final billNo = detail['Billno']?.toString() ?? '';
+      if (billNo.isEmpty) {
+        log('⚠️ SalesController: Skipping SalesInvoiceDetails entry with empty BillNo.');
+        continue; // Skip entries without a valid BillNo
+      }
+
+      final itemCode = detail['Itemcode']?.toString() ?? '';
+      final batchNo = detail['batchno']?.toString() ?? '';
+      final packing = detail['Packing']?.toString() ?? '';
+      final quantity = double.tryParse('${detail['qty']}') ?? 0.0;
+      final rate = double.tryParse('${detail['salesprice']}') ?? 0.0;
+      final amount = double.tryParse('${detail['total']}') ?? 0.0;
+
+      // Lookup ItemName from the parsed ItemMaster data.
+      final itemName = itemCodeToName[itemCode] ?? 'Unknown Item';
+
+      // Create a SalesItemDetail object for the current detail entry.
+      final salesItemDetail = SalesItemDetail(
+        billNo: billNo,
+        itemCode: itemCode,
+        itemName: itemName,
+        batchNo: batchNo,
+        packing: packing,
+        quantity: quantity,
+        rate: rate,
+        amount: amount,
+      );
+
+      // Add the detail to the list for its corresponding BillNo.
+      billNoToDetails.putIfAbsent(billNo, () => []).add(salesItemDetail);
+    }
+    log('✅ SalesController: SalesInvoiceDetails data parsed and grouped. Number of BillNo groups: ${billNoToDetails.length}');
+
+    // 4. Process SalesInvoiceMaster.csv and combine with the grouped details.
+    final List<Map<String, dynamic>> salesMasterMaps = CsvUtils.toMaps(
+      salesMasterCsv,
+      stringColumns: [
+        'Billno',
+        'invoicedate', // Keep as string for parsing
+        'entrydate',   // Keep as string for parsing
+      ],
+    );
+
+    final List<SalesEntry> processedSales = [];
+    for (var m in salesMasterMaps) {
+      final String billNo = m['Billno']?.toString() ?? '';
+      final String accountName = m['accountname']?.toString() ?? '';
+      final String paymentMode = m['paymentmode']?.toString() ?? '';
+      final double totalBillAmount = double.tryParse('${m['totalbillamount']}') ?? 0.0;
+
+      DateTime? entryDate;
+      final rawDate = '${m['invoicedate'] ?? m['entrydate'] ?? ''}';
+      if (rawDate.isNotEmpty && rawDate != 'null') {
+        try {
+          // Parse date, taking only the date part if time is included.
+          entryDate = DateTime.parse(rawDate.split(' ').first);
+        } catch (e) {
+          log('⚠️ SalesController: Error parsing date "$rawDate" for BillNo $billNo: $e');
+          // Ignore parse errors and leave entryDate as null.
+        }
+      }
+
+      // Retrieve the list of detailed items for this BillNo.
+      final List<SalesItemDetail> items = billNoToDetails[billNo] ?? [];
+
+      // Create the final SalesEntry object.
+      processedSales.add(
+        SalesEntry(
+          accountName: accountName,
+          billNo: billNo,
+          paymentMode: paymentMode,
+          amount: totalBillAmount,
+          entryDate: entryDate,
+          items: items, // Attach the list of detailed items
+        ),
+      );
+    }
+
+    sales.value = processedSales; // Update the observable list
   }
 
   // --- Existing Getters (adapted to new SalesEntry model) ---
@@ -269,5 +455,21 @@ class SalesController extends GetxController with BaseRemoteController {
           bill.contains(billQ.toLowerCase()) &&
           dateMatch;
     }).toList();
+  }
+
+  /// Clear processed data cache to force refresh
+  void clearCache() {
+    _hasProcessedData = false;
+    _lastProcessedTime = null;
+    sales.clear();
+    log('[SalesController] Cache cleared');
+  }
+
+  /// Get processing status info
+  String getProcessingInfo() {
+    if (isProcessingLargeDataset.value) {
+      return 'Processing large dataset: ${(processingProgress.value * 100).toStringAsFixed(1)}%';
+    }
+    return 'Ready';
   }
 }

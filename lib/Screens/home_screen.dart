@@ -253,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     child: DrawerHeader(
                       decoration: const BoxDecoration(
                         image: DecorationImage(
-                          image: AssetImage("assets/appbarimg.png"),
+                          image: AssetImage('assets/appbarimg.png'),
                           fit: BoxFit.cover,
                         ),
                       ),
@@ -280,7 +280,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           const SizedBox(width: 16),
                           Obx(() {
                             final user = googleSignInController.user.value;
-                            String displayText = "Kisan Krushi Menu";
+                            String displayText = "Softagri Menu";
 
                             if (user != null) {
                               final userName = user.displayName ?? user.email;
