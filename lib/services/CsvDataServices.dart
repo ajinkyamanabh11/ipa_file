@@ -29,12 +29,12 @@ class CsvDataService extends GetxController {
 
   static const String _lastCsvSyncTimestampKey = 'lastCsvSync';
 
-  // Adjusted cache duration for testing, consider making it longer in production
-  static const Duration _cacheDuration = Duration(minutes: 1); // Shorter cache for easier testing
+  // Increased cache duration to reduce frequent downloads
+  static const Duration _cacheDuration = Duration(hours: 2); // Longer cache for better performance
 
   // Memory management constants
-  static const int _maxMemoryUsageMB = 100; // Maximum memory usage in MB
-  static const int _chunkSize = 1000; // Process data in chunks
+  static const int _maxMemoryUsageMB = 80; // Reduced max memory usage
+  static const int _chunkSize = 500; // Smaller chunk size for better performance
 
   final RxString salesMasterCsv = ''.obs;
   final RxString salesDetailsCsv = ''.obs;
@@ -48,50 +48,133 @@ class CsvDataService extends GetxController {
 
   // Memory usage tracking
   final RxDouble memoryUsageMB = 0.0.obs;
-  final RxBool isMemoryWarning = false.obs;
+
+  // Loading states for better UX
+  final RxBool isLoadingCritical = false.obs;
+  final RxBool isLoadingSecondary = false.obs;
+  final RxDouble loadingProgress = 0.0.obs;
 
   @override
   void onInit() {
     super.onInit();
-    _startMemoryMonitoring();
-    // Potentially load from cache on init, but don't force download
-    // loadAllCsvs(forceDownload: false); // Or load specific ones if needed
-  }
-
-  /// Monitor memory usage and trigger cleanup if needed
-  void _startMemoryMonitoring() {
-    // Check memory usage every 30 seconds
-    ever(memoryUsageMB, (usage) {
+    // Start memory monitoring
+    ever(memoryUsageMB, (double usage) {
       if (usage > _maxMemoryUsageMB) {
-        isMemoryWarning.value = true;
         log('⚠️ CsvDataService: High memory usage detected: ${usage}MB. Triggering cleanup.');
-        performMemoryCleanup();
-      } else {
-        isMemoryWarning.value = false;
+        _performMemoryCleanup();
       }
+    });
+
+    // Defer initial data loading to avoid blocking main thread
+    Future.delayed(Duration(milliseconds: 100), () {
+      _loadEssentialDataOnly();
     });
   }
 
-  /// Perform memory cleanup when usage is high
-  void performMemoryCleanup() {
-    // Clear non-essential cached data
-    if (accountMasterCsv.value.isNotEmpty) {
-      accountMasterCsv.value = '';
-      log('🧹 CsvDataService: Cleared accountMasterCsv from memory');
+  /// Load only essential data needed for app startup
+  Future<void> _loadEssentialDataOnly() async {
+    log('🚀 CsvDataService: Loading essential data only...');
+    isLoadingCritical.value = true;
+    
+    try {
+      // Load from cache first for essential data
+      final essentialKeys = [_accountMasterCacheKey, _allAccountsCacheKey];
+      bool hasEssentialCache = true;
+      
+      for (final key in essentialKeys) {
+        final cached = _box.read(key);
+        if (cached == null || cached.isEmpty) {
+          hasEssentialCache = false;
+          break;
+        }
+        _populateReactiveVarFromCache(key, cached);
+      }
+      
+      if (!hasEssentialCache) {
+        // Only download essential CSVs if cache is missing
+        await _loadCriticalCsvsOnly();
+      }
+      
+      // Schedule secondary data loading after a delay
+      Future.delayed(Duration(seconds: 2), () {
+        _loadSecondaryData();
+      });
+      
+    } finally {
+      isLoadingCritical.value = false;
     }
-    if (allAccountsCsv.value.isNotEmpty) {
-      allAccountsCsv.value = '';
-      log('🧹 CsvDataService: Cleared allAccountsCsv from memory');
-    }
-
-    // Force garbage collection hint
-    _requestGarbageCollection();
   }
 
-  /// Request garbage collection (hint to Dart VM)
-  void _requestGarbageCollection() {
-    // This is a hint to the Dart VM to consider garbage collection
-    List.generate(100, (index) => []).clear();
+  /// Load critical CSVs only (for immediate app functionality)
+  Future<void> _loadCriticalCsvsOnly() async {
+    final criticalConfigs = [
+      {'key': _accountMasterCacheKey, 'filename': 'AccountMaster.csv', 'priority': 1},
+      {'key': _allAccountsCacheKey, 'filename': 'AllAccounts.csv', 'priority': 1},
+    ];
+    
+    try {
+      final path = await SoftAgriPath.build(drive);
+      final folderId = await drive.folderId(path);
+      await _downloadSpecificCsvs(criticalConfigs, folderId);
+    } catch (e, st) {
+      log('❌ CsvDataService: Error loading critical CSVs: $e\n$st');
+    }
+  }
+
+  /// Load secondary data (sales, items, etc.) in background
+  Future<void> _loadSecondaryData() async {
+    if (isLoadingSecondary.value) return;
+    
+    log('🔄 CsvDataService: Loading secondary data in background...');
+    isLoadingSecondary.value = true;
+    
+    try {
+      final secondaryConfigs = [
+        {'key': _salesMasterCacheKey, 'filename': 'SalesInvoiceMaster.csv', 'priority': 2},
+        {'key': _salesDetailsCacheKey, 'filename': 'SalesInvoiceDetails.csv', 'priority': 2},
+        {'key': _itemMasterCacheKey, 'filename': 'ItemMaster.csv', 'priority': 2},
+        {'key': _itemDetailCacheKey, 'filename': 'ItemDetail.csv', 'priority': 2},
+        {'key': _customerInfoCacheKey, 'filename': 'CustomerInformation.csv', 'priority': 2},
+        {'key': _supplierInfoCacheKey, 'filename': 'SupplierInformation.csv', 'priority': 2},
+      ];
+      
+      // Check cache first
+      bool needsDownload = false;
+      for (final config in secondaryConfigs) {
+        final cached = _box.read(config['key']);
+        if (cached == null || cached.isEmpty) {
+          needsDownload = true;
+        } else {
+          _populateReactiveVarFromCache(config['key'], cached);
+        }
+      }
+      
+      if (needsDownload) {
+        final path = await SoftAgriPath.build(drive);
+        final folderId = await drive.folderId(path);
+        await _downloadSpecificCsvs(secondaryConfigs, folderId);
+      }
+      
+    } catch (e, st) {
+      log('❌ CsvDataService: Error loading secondary data: $e\n$st');
+    } finally {
+      isLoadingSecondary.value = false;
+    }
+  }
+
+  void _performMemoryCleanup() {
+    // Clear non-essential data when memory is high
+    if (salesMasterCsv.value.isNotEmpty) {
+      salesMasterCsv.value = '';
+      log('🧹 CsvDataService: Cleared salesMasterCsv from memory');
+    }
+    if (salesDetailsCsv.value.isNotEmpty) {
+      salesDetailsCsv.value = '';
+      log('🧹 CsvDataService: Cleared salesDetailsCsv from memory');
+    }
+    
+    clearParsedCache();
+    getCurrentMemoryUsageMB(); // Recalculate
   }
 
   /// Loads all required CSVs with memory-efficient processing
@@ -178,7 +261,7 @@ class CsvDataService extends GetxController {
       try {
         final path = await SoftAgriPath.build(drive);
         final folderId = await drive.folderId(path);
-        await _downloadCsvsWithMemoryManagement(csvConfigs, folderId);
+        await _downloadSpecificCsvs(csvConfigs, folderId);
         await _box.write(_lastCsvSyncTimestampKey, DateTime.now().millisecondsSinceEpoch);
         log('📦 CsvDataService: All CSVs downloaded and cached.');
       } catch (e, st) {
@@ -188,14 +271,14 @@ class CsvDataService extends GetxController {
     }
   }
 
-
-  /// Download CSVs with memory management and priority-based loading
-  Future<void> _downloadCsvsWithMemoryManagement(
+  /// Download specific CSVs with optimized memory management
+  Future<void> _downloadSpecificCsvs(
       List<Map<String, dynamic>> csvConfigs,
       String folderId,
       ) async {
     csvConfigs.sort((a, b) => a['priority'].compareTo(b['priority']));
 
+    int completed = 0;
     for (final config in csvConfigs) {
       try {
         if (memoryUsageMB.value > _maxMemoryUsageMB * 0.8 && config['priority'] > 1) {
@@ -203,6 +286,8 @@ class CsvDataService extends GetxController {
           continue;
         }
 
+        loadingProgress.value = completed / csvConfigs.length;
+        
         final fileId = await drive.fileId(config['filename'], folderId);
         final csvData = await drive.downloadCsv(fileId);
 
@@ -226,13 +311,17 @@ class CsvDataService extends GetxController {
 
         log('📥 CsvDataService: Downloaded $key (${estimatedSize.toStringAsFixed(1)}MB)');
 
-        await Future.delayed(Duration(milliseconds: 50)); // Reduced delay
+        // Yield control to prevent main thread blocking
+        await Future.delayed(Duration(milliseconds: 10));
+        completed++;
 
       } catch (e, st) {
         log('❌ CsvDataService: Failed to download ${config['filename']}: $e\n$st');
         continue;
       }
     }
+    
+    loadingProgress.value = 1.0;
   }
 
   void _populateReactiveVarFromCache(String key, String? cachedData) {

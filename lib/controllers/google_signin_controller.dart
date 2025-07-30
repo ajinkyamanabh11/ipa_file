@@ -1,94 +1,88 @@
+import 'package:demo/model/customerModel.dart';
 import 'package:get/get.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'dart:developer';
-import 'package:flutter/foundation.dart' show kIsWeb; // IMPORTANT: Import kIsWeb
 
 class GoogleSignInController extends GetxController {
-  // IMPORTANT: Replace 'YOUR_WEB_CLIENT_ID_FROM_CONSOLE.apps.googleusercontent.com'
-  // with the actual Web application Client ID you created in Google Cloud Console
-  // for your Flutter web app.
-  static const String _webClientId = '639885057295-u22nhp0cafui6h3bfbedhj2tcnlqvp5v.apps.googleusercontent.com';
+  static const List<String> _scopes = ['https://www.googleapis.com/auth/drive'];
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: [
-      'email',
-      'https://www.googleapis.com/auth/drive.readonly',
-    ],
-    // CRITICAL: Conditionally provide the clientId for web builds.
-    // For iOS and Android, the native SDKs pick up the client ID from Info.plist
-    // and google-services.json respectively, so it's 'null' for them.
-    clientId: kIsWeb ? _webClientId : null,
-  );
+  final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: _scopes);
+  final Rx<GoogleSignInAccount?> user = Rx<GoogleSignInAccount?>(null);
 
-  Rx<GoogleSignInAccount?> user = Rx<GoogleSignInAccount?>(null);
-  RxBool isInitializing = false.obs;
+  // Auth header caching
+  Map<String, String>? _cachedAuthHeaders;
+  DateTime? _authHeadersCacheTime;
+  static const Duration _authCacheExpiry = Duration(minutes: 30); // Cache for 30 minutes
 
   bool get isSignedIn => user.value != null;
 
-  Future<GoogleSignInAccount?> silentLogin() async {
-    try {
-      // Add timeout to prevent indefinite blocking
-      final account = await _googleSignIn.signInSilently().timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          log("Silent login timeout");
-          return null;
-        },
+  // Basic customer methods
+  String get customerId => user.value?.id ?? '';
+  String get customerEmail => user.value?.email ?? '';
+  String get customerName => user.value?.displayName ?? '';
+
+  CustomerModel get currentCustomer => CustomerModel(
+        customerId: customerId,
+        customerName: customerName,
+        customerEmail: customerEmail,
       );
+
+  Future<void> signIn() async {
+    try {
+      final account = await _googleSignIn.signIn();
       if (account != null) {
         user.value = account;
-        log("Silent login: ${account.email}");
+        log("Signed in as: ${account.email}");
+        // Clear cached auth headers to force refresh
+        _invalidateAuthCache();
       }
-      return account;
     } catch (e) {
-      log("Silent login error: $e");
-      return null;
+      log("Error signing in: $e");
     }
   }
 
-  Future<void> login() async {
+  Future<void> signInSilently() async {
     try {
-      // Add timeout for manual login as well
-      final account = await _googleSignIn.signIn().timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          log("Manual login timeout");
-          return null;
-        },
-      );
+      final account = await _googleSignIn.signInSilently();
       if (account != null) {
         user.value = account;
-        log("Logged in as: ${account.email}");
+        log("Silent sign-in successful: ${account.email}");
+        // Clear cached auth headers to force refresh
+        _invalidateAuthCache();
+      } else {
+        log("Initial silent sign-in: No user found.");
       }
     } catch (e) {
-      log("Login error: $e");
-      // Consider showing a user-friendly error message here, e.g., using Get.snackbar
+      log("Error during silent sign-in: $e");
     }
   }
 
-  Future<void> logout() async {
+  Future<void> signOut() async {
     try {
-      await _googleSignIn.disconnect().timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          log("Logout timeout, proceeding anyway");
-        },
-      );
-    } catch (e) {
-      log("Logout error: $e");
-    } finally {
+      await _googleSignIn.signOut();
       user.value = null;
+      _invalidateAuthCache(); // Clear cache on sign out
       log("Logged out.");
     }
   }
 
+  /// Get auth headers with intelligent caching to reduce redundant calls
   Future<Map<String, String>?> getAuthHeaders() async {
+    // Check if we have valid cached headers
+    if (_cachedAuthHeaders != null && 
+        _authHeadersCacheTime != null &&
+        DateTime.now().difference(_authHeadersCacheTime!) < _authCacheExpiry) {
+      log("getAuthHeaders: Using cached auth headers.");
+      return _cachedAuthHeaders;
+    }
+
     // Attempt silent sign-in if not already signed in to get a fresh account
     final account = user.value ?? await _googleSignIn.signInSilently();
     if (account == null) {
       log("getAuthHeaders: No signed-in user found.");
       return null;
     }
+    
     try {
       final headers = await account.authHeaders.timeout(
         const Duration(seconds: 10),
@@ -97,12 +91,33 @@ class GoogleSignInController extends GetxController {
           return <String, String>{};
         },
       );
-      log("getAuthHeaders: Successfully retrieved auth headers.");
+      
+      if (headers.isNotEmpty) {
+        // Cache the headers
+        _cachedAuthHeaders = headers;
+        _authHeadersCacheTime = DateTime.now();
+        log("getAuthHeaders: Successfully retrieved and cached auth headers.");
+      }
+      
       return headers;
     } catch (e) {
       log("getAuthHeaders error: $e");
+      _invalidateAuthCache(); // Clear invalid cache
       return null;
     }
+  }
+
+  /// Invalidate auth header cache (call when user changes or signs out)
+  void _invalidateAuthCache() {
+    _cachedAuthHeaders = null;
+    _authHeadersCacheTime = null;
+    log("Auth headers cache invalidated.");
+  }
+
+  /// Force refresh of auth headers (useful for long-running operations)
+  Future<Map<String, String>?> refreshAuthHeaders() async {
+    _invalidateAuthCache();
+    return await getAuthHeaders();
   }
 
   @override
@@ -113,38 +128,16 @@ class GoogleSignInController extends GetxController {
       user.value = account;
       if (account != null) {
         log("onCurrentUserChanged: User is now ${account.email}");
+        // Invalidate cache when user changes
+        _invalidateAuthCache();
       } else {
         log("onCurrentUserChanged: User is now null (signed out)");
+        _invalidateAuthCache();
       }
     });
 
-    // Perform silent sign-in asynchronously without blocking initialization
-    _performAsyncSilentSignIn();
-  }
-
-  // Separate method for async silent sign-in to avoid blocking onInit
-  void _performAsyncSilentSignIn() async {
-    isInitializing.value = true;
-    try {
-      // Use a shorter timeout for initial silent sign-in
-      final account = await _googleSignIn.signInSilently().timeout(
-        const Duration(seconds: 3),
-        onTimeout: () {
-          log("Initial silent sign-in timeout - proceeding without login");
-          return null;
-        },
-      );
-
-      if (account != null) {
-        user.value = account;
-        log("Initial silent sign-in successful: ${account.email}");
-      } else {
-        log("Initial silent sign-in: No user found.");
-      }
-    } catch (e) {
-      log("Initial silent sign-in error: $e");
-    } finally {
-      isInitializing.value = false;
-    }
+    // Sign in silently when the controller is first instantiated
+    // but don't await it here to avoid blocking initialization
+    signInSilently();
   }
 }
