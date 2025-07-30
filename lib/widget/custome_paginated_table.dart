@@ -49,7 +49,7 @@ class CustomPaginatedTable extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Table
+        // Table Section
         Expanded(
           child: isLoading
               ? const Center(child: CircularProgressIndicator())
@@ -64,18 +64,25 @@ class CustomPaginatedTable extends StatelessWidget {
               ],
             ),
           )
-              : SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SingleChildScrollView(
+              :
+          // The main change: Wrap DataTable in a vertical SingleChildScrollView
+          SingleChildScrollView( // This enables vertical scrolling for the table body
+            scrollDirection: Axis.vertical,
+            child: SingleChildScrollView( // This enables horizontal scrolling for the table body
+              scrollDirection: Axis.horizontal,
               child: DataTable(
                 headingRowColor: MaterialStateProperty.all(surfaceVariantColor),
                 columnSpacing: 24,
                 columns: columnHeaders.map((header) {
                   return DataColumn(
-                    label: Text(
-                      header,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
+                    label: Flexible(
+                      child: Text(
+                        header,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: onSurfaceColor,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   );
@@ -102,6 +109,7 @@ class CustomPaginatedTable extends StatelessWidget {
                         Text(
                           value,
                           style: TextStyle(color: onSurfaceColor),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       );
                     }).toList(),
@@ -112,7 +120,7 @@ class CustomPaginatedTable extends StatelessWidget {
           ),
         ),
 
-        // Pagination Controls
+        // Pagination Controls Section
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -123,78 +131,97 @@ class CustomPaginatedTable extends StatelessWidget {
           ),
           child: Column(
             children: [
-              // Items per page selector
+              // Items per page selector (top row of pagination controls)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    paginationInfo,
-                    style: Theme.of(context).textTheme.bodyMedium,
+                  Flexible(
+                    flex: 2,
+                    child: Text(
+                      paginationInfo,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  Row(
-                    children: [
-                      Text(
-                        'Items per page: ',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      DropdownButton<int>(
-                        value: itemsPerPage,
-                        items: availableItemsPerPage.map((value) {
-                          return DropdownMenuItem<int>(
-                            value: value,
-                            child: Text(value.toString()),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            onItemsPerPageChanged(value);
-                          }
-                        },
-                      ),
-                    ],
+                  Flexible(
+                    flex: 1,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Items per page: ',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Expanded(
+                          child: DropdownButton<int>(
+                            isExpanded: true,
+                            value: itemsPerPage,
+                            items: availableItemsPerPage.map((value) {
+                              return DropdownMenuItem<int>(
+                                value: value,
+                                child: Text(value.toString()),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                onItemsPerPageChanged(value);
+                              }
+                            },
+                            dropdownColor: Theme.of(context).cardColor,
+                            style: TextStyle(color: onSurfaceColor),
+                            iconEnabledColor: primaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
 
               const SizedBox(height: 12),
 
-              // Navigation controls
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // First page button
-                  IconButton(
-                    onPressed: currentPage > 0 ? () => onGoToPage(0) : null,
-                    icon: const Icon(Icons.first_page),
-                    tooltip: 'First page',
-                  ),
-
-                  // Previous page button
-                  IconButton(
-                    onPressed: hasPreviousPage ? onPreviousPage : null,
-                    icon: const Icon(Icons.chevron_left),
-                    tooltip: 'Previous page',
-                  ),
-
-                  // Page numbers
-                  ..._buildPageNumbers(context, primaryColor),
-
-                  // Next page button
-                  IconButton(
-                    onPressed: hasNextPage ? onNextPage : null,
-                    icon: const Icon(Icons.chevron_right),
-                    tooltip: 'Next page',
-                  ),
-
-                  // Last page button
-                  IconButton(
-                    onPressed: currentPage < totalPages - 1
-                        ? () => onGoToPage(totalPages - 1)
-                        : null,
-                    icon: const Icon(Icons.last_page),
-                    tooltip: 'Last page',
-                  ),
-                ],
+              // Navigation controls (bottom row of pagination controls)
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      onPressed: currentPage > 0 ? () => onGoToPage(0) : null,
+                      icon: const Icon(Icons.first_page),
+                      tooltip: 'First page',
+                      color: primaryColor,
+                      disabledColor: Colors.grey,
+                    ),
+                    IconButton(
+                      onPressed: hasPreviousPage ? onPreviousPage : null,
+                      icon: const Icon(Icons.chevron_left),
+                      tooltip: 'Previous page',
+                      color: primaryColor,
+                      disabledColor: Colors.grey,
+                    ),
+                    ..._buildPageNumbers(context, primaryColor),
+                    IconButton(
+                      onPressed: hasNextPage ? onNextPage : null,
+                      icon: const Icon(Icons.chevron_right),
+                      tooltip: 'Next page',
+                      color: primaryColor,
+                      disabledColor: Colors.grey,
+                    ),
+                    IconButton(
+                      onPressed: currentPage < totalPages - 1
+                          ? () => onGoToPage(totalPages - 1)
+                          : null,
+                      icon: const Icon(Icons.last_page),
+                      tooltip: 'Last page',
+                      color: primaryColor,
+                      disabledColor: Colors.grey,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -205,44 +232,48 @@ class CustomPaginatedTable extends StatelessWidget {
 
   List<Widget> _buildPageNumbers(BuildContext context, Color primaryColor) {
     List<Widget> pageNumbers = [];
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
 
-    // Calculate which page numbers to show
     int startPage = 0;
     int endPage = totalPages - 1;
 
-    // Show max 5 page numbers at a time
-    if (totalPages > 5) {
-      if (currentPage <= 2) {
+    const int maxVisiblePages = 5;
+
+    if (totalPages > maxVisiblePages) {
+      if (currentPage <= maxVisiblePages ~/ 2) {
         startPage = 0;
-        endPage = 4;
-      } else if (currentPage >= totalPages - 3) {
-        startPage = totalPages - 5;
+        endPage = maxVisiblePages - 1;
+      } else if (currentPage >= totalPages - (maxVisiblePages ~/ 2) - 1) {
+        startPage = totalPages - maxVisiblePages;
         endPage = totalPages - 1;
       } else {
-        startPage = currentPage - 2;
-        endPage = currentPage + 2;
+        startPage = currentPage - (maxVisiblePages ~/ 2);
+        endPage = currentPage + (maxVisiblePages ~/ 2);
       }
     }
 
-    // Add ellipsis at the beginning if needed
     if (startPage > 0) {
       pageNumbers.add(
         TextButton(
           onPressed: () => onGoToPage(0),
+          style: TextButton.styleFrom(
+            minimumSize: const Size(36, 36),
+            padding: EdgeInsets.zero,
+            foregroundColor: onSurfaceColor,
+          ),
           child: const Text('1'),
         ),
       );
       if (startPage > 1) {
         pageNumbers.add(
           const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4),
+            padding: EdgeInsets.symmetric(horizontal: 2),
             child: Text('...'),
           ),
         );
       }
     }
 
-    // Add page number buttons
     for (int i = startPage; i <= endPage; i++) {
       final isCurrentPage = i == currentPage;
       pageNumbers.add(
@@ -256,6 +287,10 @@ class CustomPaginatedTable extends StatelessWidget {
             ),
             child: TextButton(
               onPressed: null,
+              style: TextButton.styleFrom(
+                minimumSize: const Size(36, 36),
+                padding: EdgeInsets.zero,
+              ),
               child: Text(
                 '${i + 1}',
                 style: TextStyle(
@@ -267,18 +302,22 @@ class CustomPaginatedTable extends StatelessWidget {
           )
               : TextButton(
             onPressed: () => onGoToPage(i),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(36, 36),
+              padding: EdgeInsets.zero,
+              foregroundColor: onSurfaceColor,
+            ),
             child: Text('${i + 1}'),
           ),
         ),
       );
     }
 
-    // Add ellipsis at the end if needed
     if (endPage < totalPages - 1) {
       if (endPage < totalPages - 2) {
         pageNumbers.add(
           const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4),
+            padding: EdgeInsets.symmetric(horizontal: 2),
             child: Text('...'),
           ),
         );
@@ -286,6 +325,11 @@ class CustomPaginatedTable extends StatelessWidget {
       pageNumbers.add(
         TextButton(
           onPressed: () => onGoToPage(totalPages - 1),
+          style: TextButton.styleFrom(
+            minimumSize: const Size(36, 36),
+            padding: EdgeInsets.zero,
+            foregroundColor: onSurfaceColor,
+          ),
           child: Text('$totalPages'),
         ),
       );

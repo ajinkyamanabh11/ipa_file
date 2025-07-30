@@ -4,7 +4,9 @@ import 'package:flutter/cupertino.dart';
 
 class DotsWaveLoadingText extends StatefulWidget {
   final Color? color;
-  const DotsWaveLoadingText({super.key, this.color,});
+
+  final dynamic text;
+  const DotsWaveLoadingText({super.key, this.color, this.text,});
 
   @override
   State<DotsWaveLoadingText> createState() => _DotsWaveLoadingTextState();
