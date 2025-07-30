@@ -11,15 +11,12 @@ class StockReportController extends GetxController {
   var errorMessage = Rx<String?>(null);
   var searchQuery = ''.obs;
 
+  // New: Item type filter
+  var itemTypeFilter = 'All'.obs;
+
   // New observables for sorting
   var sortByColumn = 'Item Name'.obs; // Default sort by Item Name
   var sortAscending = true.obs; // Default sort ascending
-
-  // Pagination variables
-  var currentPage = 0.obs;
-  var itemsPerPage = 50.obs; // Reduced from potential unlimited to 50 items per page
-  var totalItems = 0.obs;
-  var totalPages = 0.obs;
 
   var filteredStockData = <Map<String, dynamic>>[].obs;
   var allStockData = <Map<String, dynamic>>[]; // Internal storage for all data
@@ -38,9 +35,9 @@ class StockReportController extends GetxController {
     ever(_csvDataService.itemDetailCsv, (_) => _applyFilter());
     ever(_csvDataService.itemMasterCsv, (_) => _applyFilter());
     ever(searchQuery, (_) => _applyFilter());
+    ever(itemTypeFilter, (_) => _applyFilter()); // New: Re-apply filter on item type change
     ever(sortByColumn, (_) => _applyFilter()); // Trigger filter on sort column change
     ever(sortAscending, (_) => _applyFilter()); // Trigger filter on sort order change
-    ever(currentPage, (_) => _updateDisplayedData()); // Update displayed data when page changes
 
     loadStockReport(); // Initial data load
   }
@@ -59,34 +56,6 @@ class StockReportController extends GetxController {
   /// Public method to toggle the sort order (ascending/descending).
   void toggleSortOrder() {
     sortAscending.value = !sortAscending.value;
-  }
-
-  /// Navigate to next page
-  void nextPage() {
-    if (currentPage.value < totalPages.value - 1) {
-      currentPage.value++;
-    }
-  }
-
-  /// Navigate to previous page
-  void previousPage() {
-    if (currentPage.value > 0) {
-      currentPage.value--;
-    }
-  }
-
-  /// Go to specific page
-  void goToPage(int page) {
-    if (page >= 0 && page < totalPages.value) {
-      currentPage.value = page;
-    }
-  }
-
-  /// Set items per page and refresh display
-  void setItemsPerPage(int items) {
-    itemsPerPage.value = items;
-    currentPage.value = 0; // Reset to first page
-    _updateDisplayedData();
   }
 
   /// Loads stock report data from CSVs.
@@ -222,8 +191,6 @@ class StockReportController extends GetxController {
       allStockData.clear();
       filteredStockData.value = [];
       totalCurrentStock.value = 0.0;
-      totalItems.value = 0;
-      totalPages.value = 0;
       return;
     }
 
@@ -289,14 +256,21 @@ class StockReportController extends GetxController {
   /// Apply search filter and sorting to processed data
   void _applyFilterAndSort() {
     final search = searchQuery.value.toLowerCase().trim();
+    final typeFilter = itemTypeFilter.value;
 
-    // Apply search filter
+    // Apply search filter and item type filter
     List<Map<String, dynamic>> filteredList = allStockData;
-    if (search.isNotEmpty) {
+    if (search.isNotEmpty || typeFilter != 'All') {
       filteredList = allStockData.where((item) {
         final itemCode = item['Item Code']?.toString().toLowerCase() ?? '';
         final itemName = item['Item Name']?.toString().toLowerCase() ?? '';
-        return itemCode.contains(search) || itemName.contains(search);
+        final itemType = item['Type']?.toString() ?? '';
+
+        bool matchesSearch = search.isEmpty ||
+            (itemCode.contains(search) || itemName.contains(search));
+        bool matchesType = typeFilter == 'All' || itemType == typeFilter;
+
+        return matchesSearch && matchesType;
       }).toList();
     }
 
@@ -321,52 +295,22 @@ class StockReportController extends GetxController {
       return sortAscending.value ? compareResult : -compareResult;
     });
 
-    // Update pagination info
-    totalItems.value = filteredList.length;
-    totalPages.value = (totalItems.value / itemsPerPage.value).ceil();
-
-    // Reset to first page if current page is out of bounds
-    if (currentPage.value >= totalPages.value && totalPages.value > 0) {
-      currentPage.value = 0;
-    }
-
-    // Store filtered data for pagination
-    allStockData = filteredList;
-    _updateDisplayedData();
+    // Display all filtered items without pagination
+    filteredStockData.value = filteredList;
+    print('--- Displaying all ${filteredList.length} items ---');
   }
 
-  /// Update the displayed data based on current page
-  void _updateDisplayedData() {
-    if (allStockData.isEmpty) {
-      filteredStockData.value = [];
-      return;
+  /// Get unique item types for filter dropdown
+  List<String> getUniqueItemTypes() {
+    final Set<String> uniqueTypes = {'All'};
+
+    for (final item in allStockData) {
+      final itemType = item['Type']?.toString().trim() ?? '';
+      if (itemType.isNotEmpty && itemType != 'N/A') {
+        uniqueTypes.add(itemType);
+      }
     }
 
-    final startIndex = currentPage.value * itemsPerPage.value;
-    final endIndex = (startIndex + itemsPerPage.value).clamp(0, allStockData.length);
-
-    final pageData = allStockData.sublist(startIndex, endIndex);
-
-    // Add Sr.No. to displayed data
-    for (int i = 0; i < pageData.length; i++) {
-      pageData[i]['Sr.No.'] = startIndex + i + 1;
-    }
-
-    filteredStockData.value = pageData;
-    print('--- Displaying page ${currentPage.value + 1} of ${totalPages.value} (${pageData.length} items) ---');
+    return uniqueTypes.toList()..sort();
   }
-
-  /// Get pagination info as string
-  String getPaginationInfo() {
-    if (totalItems.value == 0) return 'No items';
-
-    final startItem = (currentPage.value * itemsPerPage.value) + 1;
-    final endItem = ((currentPage.value + 1) * itemsPerPage.value).clamp(0, totalItems.value);
-
-    return 'Showing $startItem-$endItem of ${totalItems.value} items';
-  }
-
-  /// Check if there are more pages
-  bool get hasNextPage => currentPage.value < totalPages.value - 1;
-  bool get hasPreviousPage => currentPage.value > 0;
 }
