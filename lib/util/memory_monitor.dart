@@ -14,6 +14,10 @@ class MemoryMonitor extends GetxService {
   final RxBool isMemoryWarning = false.obs;
   final RxBool isMemoryCritical = false.obs;
 
+  // Memory optimization stats
+  final RxInt cleanupCount = 0.obs;
+  final Rx<DateTime> lastCleanup = DateTime.now().obs;
+
   // Memory usage history for trend analysis
   final List<double> _memoryHistory = [];
   static const int _maxHistorySize = 20;
