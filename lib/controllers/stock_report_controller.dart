@@ -11,6 +11,9 @@ class StockReportController extends GetxController {
   var errorMessage = Rx<String?>(null);
   var searchQuery = ''.obs;
 
+  // New observable for item type filtering
+  var itemTypeFilter = 'All'.obs;
+
   // New observables for sorting
   var sortByColumn = 'Item Name'.obs; // Default sort by Item Name
   var sortAscending = true.obs; // Default sort ascending
@@ -38,11 +41,26 @@ class StockReportController extends GetxController {
     ever(_csvDataService.itemDetailCsv, (_) => _applyFilter());
     ever(_csvDataService.itemMasterCsv, (_) => _applyFilter());
     ever(searchQuery, (_) => _applyFilter());
+    ever(itemTypeFilter, (_) => _applyFilter()); // Trigger filter on item type change
     ever(sortByColumn, (_) => _applyFilter()); // Trigger filter on sort column change
     ever(sortAscending, (_) => _applyFilter()); // Trigger filter on sort order change
     ever(currentPage, (_) => _updateDisplayedData()); // Update displayed data when page changes
 
     loadStockReport(); // Initial data load
+  }
+
+  /// Get unique item types for the dropdown filter
+  List<String> getUniqueItemTypes() {
+    final Set<String> uniqueTypes = {'All'}; // Always include 'All' option
+    
+    for (final item in allStockData) {
+      final itemType = item['Type']?.toString().trim() ?? '';
+      if (itemType.isNotEmpty && itemType != 'N/A') {
+        uniqueTypes.add(itemType);
+      }
+    }
+    
+    return uniqueTypes.toList()..sort();
   }
 
   /// Public method to set the column to sort by.
@@ -289,14 +307,30 @@ class StockReportController extends GetxController {
   /// Apply search filter and sorting to processed data
   void _applyFilterAndSort() {
     final search = searchQuery.value.toLowerCase().trim();
+    final typeFilter = itemTypeFilter.value;
 
-    // Apply search filter
+    // Apply search filter and item type filter
     List<Map<String, dynamic>> filteredList = allStockData;
-    if (search.isNotEmpty) {
+    
+    if (search.isNotEmpty || typeFilter != 'All') {
       filteredList = allStockData.where((item) {
-        final itemCode = item['Item Code']?.toString().toLowerCase() ?? '';
-        final itemName = item['Item Name']?.toString().toLowerCase() ?? '';
-        return itemCode.contains(search) || itemName.contains(search);
+        bool matchesSearch = true;
+        bool matchesType = true;
+        
+        // Apply search filter
+        if (search.isNotEmpty) {
+          final itemCode = item['Item Code']?.toString().toLowerCase() ?? '';
+          final itemName = item['Item Name']?.toString().toLowerCase() ?? '';
+          matchesSearch = itemCode.contains(search) || itemName.contains(search);
+        }
+        
+        // Apply item type filter
+        if (typeFilter != 'All') {
+          final itemType = item['Type']?.toString().trim() ?? '';
+          matchesType = itemType == typeFilter;
+        }
+        
+        return matchesSearch && matchesType;
       }).toList();
     }
 
