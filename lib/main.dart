@@ -37,19 +37,22 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('en_IN', null);
   await GetStorage.init();
+  
+  // Initialize only critical controllers first
   Get.put(ThemeController());
-  await InitialBindings.ensure(); // This will put GoogleSignInController and GoogleDriveService
-
-  final signInController = Get.find<GoogleSignInController>(); // Get the already put instance
-  // IMPORTANT: Do NOT await signInSilently here if you want to handle it on the login screen
-  // The silent login is already happening in the onInit of GoogleSignInController
-  // but we don't need to block the UI or make routing decisions based on its *immediate* result here.
-
-  // Instead, just check the initial state of the user.
-  // The GoogleSignInController's `user` stream will update when silent sign-in completes.
-  // For the initial route, we assume they're not logged in until proven otherwise by the controller's state.
-
-  runApp(MyApp(isLoggedIn: signInController.isSignedIn)); // Pass the *initial* state
+  
+  // Initialize core services without blocking startup
+  await InitialBindings.ensureCore(); // Only core services initially
+  
+  final signInController = Get.find<GoogleSignInController>();
+  
+  // Run the app immediately, defer heavy data loading
+  runApp(MyApp(isLoggedIn: signInController.isSignedIn));
+  
+  // Schedule background initialization after app starts
+  Future.delayed(Duration(milliseconds: 500), () {
+    InitialBindings.ensureSecondary(); // Load secondary services in background
+  });
 }
 
 class MyApp extends StatelessWidget {
