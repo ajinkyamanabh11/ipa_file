@@ -11,6 +11,9 @@ class StockReportController extends GetxController {
   var errorMessage = Rx<String?>(null);
   var searchQuery = ''.obs;
 
+  // New: Item type filter
+  var itemTypeFilter = 'All'.obs;
+
   // New observables for sorting
   var sortByColumn = 'Item Name'.obs; // Default sort by Item Name
   var sortAscending = true.obs; // Default sort ascending
@@ -38,6 +41,7 @@ class StockReportController extends GetxController {
     ever(_csvDataService.itemDetailCsv, (_) => _applyFilter());
     ever(_csvDataService.itemMasterCsv, (_) => _applyFilter());
     ever(searchQuery, (_) => _applyFilter());
+    ever(itemTypeFilter, (_) => _applyFilter()); // New: Re-apply filter on item type change
     ever(sortByColumn, (_) => _applyFilter()); // Trigger filter on sort column change
     ever(sortAscending, (_) => _applyFilter()); // Trigger filter on sort order change
     ever(currentPage, (_) => _updateDisplayedData()); // Update displayed data when page changes
@@ -289,14 +293,21 @@ class StockReportController extends GetxController {
   /// Apply search filter and sorting to processed data
   void _applyFilterAndSort() {
     final search = searchQuery.value.toLowerCase().trim();
+    final typeFilter = itemTypeFilter.value;
 
-    // Apply search filter
+    // Apply search filter and item type filter
     List<Map<String, dynamic>> filteredList = allStockData;
-    if (search.isNotEmpty) {
+    if (search.isNotEmpty || typeFilter != 'All') {
       filteredList = allStockData.where((item) {
         final itemCode = item['Item Code']?.toString().toLowerCase() ?? '';
         final itemName = item['Item Name']?.toString().toLowerCase() ?? '';
-        return itemCode.contains(search) || itemName.contains(search);
+        final itemType = item['Type']?.toString() ?? '';
+        
+        bool matchesSearch = search.isEmpty || 
+            (itemCode.contains(search) || itemName.contains(search));
+        bool matchesType = typeFilter == 'All' || itemType == typeFilter;
+        
+        return matchesSearch && matchesType;
       }).toList();
     }
 
@@ -369,4 +380,18 @@ class StockReportController extends GetxController {
   /// Check if there are more pages
   bool get hasNextPage => currentPage.value < totalPages.value - 1;
   bool get hasPreviousPage => currentPage.value > 0;
+
+  /// Get unique item types for filter dropdown
+  List<String> getUniqueItemTypes() {
+    final Set<String> uniqueTypes = {'All'};
+    
+    for (final item in allStockData) {
+      final itemType = item['Type']?.toString().trim() ?? '';
+      if (itemType.isNotEmpty && itemType != 'N/A') {
+        uniqueTypes.add(itemType);
+      }
+    }
+    
+    return uniqueTypes.toList()..sort();
+  }
 }
