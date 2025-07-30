@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import '../controllers/stock_report_controller.dart';
+import '../widget/custome_paginated_table.dart';
 import '../widget/rounded_search_field.dart';
 import '../widget/animated_Dots_LoadingText.dart';
 import '../widget/custom_app_bar.dart';
+
 import 'dart:developer'; // Import for the log function
 
 class StockScreen extends StatefulWidget {
@@ -88,9 +90,7 @@ class _StockScreenState extends State<StockScreen> {
                 );
               }
 
-              final filteredData = stockReportController.filteredStockData;
-
-              if (filteredData.isEmpty) {
+              if (stockReportController.totalItems.value == 0) {
                 return const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -106,28 +106,41 @@ class _StockScreenState extends State<StockScreen> {
 
               return RefreshIndicator(
                 onRefresh: () => stockReportController.loadStockReport(forceRefresh: true),
-                child: SingleChildScrollView( // Outer vertical scroll for all content below search
-                  physics: const AlwaysScrollableScrollPhysics(), // Allows pull-to-refresh even if content doesn't fill
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0), // Padding around the table
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: DataTable(
-                        key: ValueKey(filteredData.hashCode), // Forces rebuild when data changes
-                        headingRowColor: MaterialStateProperty.all(Theme.of(context).colorScheme.surfaceVariant),
-                        columnSpacing: 24,
-                        columns: [
-                          DataColumn(label: Text('Sr.', style: Theme.of(context).textTheme.titleSmall)),
-                          DataColumn(label: Text('Item Code', style: Theme.of(context).textTheme.titleSmall)),
-                          DataColumn(label: Text('Item Name', style: Theme.of(context).textTheme.titleSmall)),
-                          DataColumn(label: Text('Batch No', style: Theme.of(context).textTheme.titleSmall)),
-                          DataColumn(label: Text('Package', style: Theme.of(context).textTheme.titleSmall)),
-                          DataColumn(label: Text('Current Stock', style: Theme.of(context).textTheme.titleSmall)),
-                          DataColumn(label: Text('Type', style: Theme.of(context).textTheme.titleSmall)),
-                        ],
-                        rows: _buildDataRows(filteredData, context),
-                      ),
-                    ),
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: CustomPaginatedTable(
+                    data: stockReportController.currentPageData,
+                    columnHeaders: const [
+                      'Sr.',
+                      'Item Code',
+                      'Item Name',
+                      'Batch No',
+                      'Package',
+                      'Current Stock',
+                      'Type',
+                    ],
+                    columnKeys: const [
+                      'Sr.No.',
+                      'Item Code',
+                      'Item Name',
+                      'Batch No',
+                      'Package',
+                      'Current Stock',
+                      'Type',
+                    ],
+                    currentPage: stockReportController.currentPage.value,
+                    totalPages: stockReportController.totalPages.value,
+                    totalItems: stockReportController.totalItems.value,
+                    itemsPerPage: stockReportController.itemsPerPage.value,
+                    availableItemsPerPage: stockReportController.availableItemsPerPage,
+                    paginationInfo: stockReportController.getPaginationInfo(),
+                    hasNextPage: stockReportController.hasNextPage,
+                    hasPreviousPage: stockReportController.hasPreviousPage,
+                    isLoading: stockReportController.isLoadingPage.value,
+                    onNextPage: stockReportController.nextPage,
+                    onPreviousPage: stockReportController.previousPage,
+                    onGoToPage: stockReportController.goToPage,
+                    onItemsPerPageChanged: stockReportController.setItemsPerPage,
                   ),
                 ),
               );
@@ -138,7 +151,7 @@ class _StockScreenState extends State<StockScreen> {
                 () => Visibility(
               visible: !stockReportController.isLoading.value &&
                   stockReportController.errorMessage.value == null &&
-                  stockReportController.filteredStockData.isNotEmpty,
+                  stockReportController.totalItems.value > 0,
               child: _buildTotalStockCard(context),
             ),
           ),
@@ -227,31 +240,6 @@ class _StockScreenState extends State<StockScreen> {
     ));
   }
 
-  List<DataRow> _buildDataRows(List<Map<String, dynamic>> data, BuildContext context) {
-    final NumberFormat stockFormatter = NumberFormat('#,##0.##');
-    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
-    final Color surfaceColor = Theme.of(context).colorScheme.surface;
-    final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
-
-    return data.asMap().entries.map<DataRow>((entry) {
-      final int index = entry.key;
-      final Map<String, dynamic> row = entry.value;
-
-      return DataRow(
-        color: MaterialStateProperty.all(index.isEven ? surfaceColor : surfaceVariantColor),
-        cells: [
-          DataCell(Text('${index + 1}', style: TextStyle(color: onSurfaceColor))),
-          DataCell(Text(row['Item Code']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
-          DataCell(Text(row['Item Name']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
-          DataCell(Text(row['Batch No']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
-          DataCell(Text(row['Package']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
-          DataCell(Text(stockFormatter.format(row['Current Stock'] ?? 0), style: TextStyle(color: onSurfaceColor))),
-          DataCell(Text(row['Type']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
-        ],
-      );
-    }).toList();
-  }
-
   Widget _buildTotalStockCard(BuildContext context) {
     final NumberFormat formatter = NumberFormat('#,##0.##');
     final Color primaryColor = Theme.of(context).primaryColor;
@@ -297,4 +285,3 @@ class _StockScreenState extends State<StockScreen> {
     );
   }
 }
-
