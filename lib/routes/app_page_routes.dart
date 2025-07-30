@@ -9,6 +9,7 @@ import '../screens/login_screen.dart';
 import '../screens/customer_ledger_screen.dart';
 import '../screens/transactions_screen.dart';
 import '../screens/sales_screen.dart';
+import '../screens/lazy_sales_screen.dart';
 import '../screens/profit_screen.dart';
 import '../screens/stock_Screens/item_type_screen.dart';
 import '../screens/stock_Screens/item_list_screen.dart';
@@ -26,6 +27,7 @@ class AppPages {
 
     //GetPage(name: Routes.transactions, page: () {}),
     GetPage(name: Routes.sales, page: () => const SalesScreen()),
+    GetPage(name: Routes.lazySales, page: () => const LazySalesScreen()),
     GetPage(name: Routes.profit, page: () => const ProfitReportScreen()),
     GetPage(name: Routes.itemTypes, page: () => StockScreen()),
     GetPage(name: Routes.itemList, page: () => const ItemListScreen()),
