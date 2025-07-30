@@ -54,8 +54,8 @@ class CsvDataService extends GetxController {
   void onInit() {
     super.onInit();
     _startMemoryMonitoring();
-    // Potentially load from cache on init, but don't force download
-    // loadAllCsvs(forceDownload: false); // Or load specific ones if needed
+    // 🔄 CHANGED: No automatic loading - data will be loaded on-demand only
+    log('📋 CsvDataService: Initialized with lazy loading pattern');
   }
 
   /// Monitor memory usage and trigger cleanup if needed

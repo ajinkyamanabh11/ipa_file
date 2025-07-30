@@ -15,6 +15,7 @@ IconData dashIcon(String label) {
     case 'profile':          return Icons.person;             // 🆕
     case 'stock':            return Icons.inventory;
     case 'sales':            return Icons.point_of_sale;
+    case 'lazy sales':       return Icons.download_rounded;   // 🆕 Lazy loading sales
     case 'customer ledger':  return Icons.money_off;
     case 'debtors':          return Icons.people;
     case 'creditors':        return Icons.account_balance_wallet;
@@ -29,6 +30,7 @@ IconData dashIcon(String label) {
 const List<DashTile> dashTiles = [
   DashTile('Stock',            Routes.itemTypes),
   DashTile('Sales',            Routes.sales),
+  DashTile('Lazy Sales',       Routes.lazySales),     // 🆕 On-demand CSV loading
   DashTile('Customer Ledger',  Routes.customerLedger),
   DashTile('Debtors',          Routes.debtors),       // ✅ fixed
   DashTile('Creditors', Routes.creditors),
@@ -44,6 +46,7 @@ const List<DashTile> drawerTiles = [
   DashTile('Profile',             ''),               // add route later
   DashTile('Stock',               Routes.itemTypes),
   DashTile('Sales',               Routes.sales),
+  DashTile('Lazy Sales',          Routes.lazySales), // 🆕 On-demand CSV loading
   DashTile('Customer Ledger',     Routes.customerLedger),
   DashTile('Debtors',             Routes.debtors),    // ✅ fixed
   DashTile('Creditors',           Routes.creditors),  // ✅ fixed

@@ -8,6 +8,7 @@ class Routes {
 
   // sales
   static const sales          = '/sales';
+  static const lazySales      = '/lazy-sales';
 
   /// ledgers
   static const customerLedger = '/customerLedger';   // ← canonical
