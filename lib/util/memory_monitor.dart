@@ -5,28 +5,22 @@ import 'dart:io';
 import 'package:get/get.dart';
 
 import '../services/CsvDataServices.dart';
-import '../services/background_processor.dart';
 
 class MemoryMonitor extends GetxService {
-  static const int _warningThresholdMB = 120;
-  static const int _criticalThresholdMB = 180;
-  static const int _emergencyThresholdMB = 220;
+  static const int _warningThresholdMB = 100;
+  static const int _criticalThresholdMB = 150;
 
   final RxDouble currentMemoryUsageMB = 0.0.obs;
   final RxBool isMemoryWarning = false.obs;
   final RxBool isMemoryCritical = false.obs;
-  final RxBool isMemoryEmergency = false.obs;
-
-  // Memory usage history for trend analysis
-  final List<double> _memoryHistory = [];
-  static const int _maxHistorySize = 30;
-
-  // Memory pressure levels
-  final RxString memoryPressureLevel = 'normal'.obs; // normal, warning, critical, emergency
 
   // Memory optimization stats
   final RxInt cleanupCount = 0.obs;
-  final RxDateTime lastCleanup = DateTime.now().obs;
+  final Rx<DateTime> lastCleanup = DateTime.now().obs;
+
+  // Memory usage history for trend analysis
+  final List<double> _memoryHistory = [];
+  static const int _maxHistorySize = 20;
 
   @override
   void onInit() {
@@ -35,11 +29,10 @@ class MemoryMonitor extends GetxService {
   }
 
   void _startMonitoring() {
-    // Monitor memory every 3 seconds for better responsiveness
+    // Monitor memory every 5 seconds
     ever(currentMemoryUsageMB, (usage) {
       _updateMemoryStatus(usage);
       _updateMemoryHistory(usage);
-      _handleMemoryPressure(usage);
     });
 
     // Start periodic memory checks
@@ -47,7 +40,7 @@ class MemoryMonitor extends GetxService {
   }
 
   void _scheduleMemoryCheck() {
-    Future.delayed(Duration(seconds: 3), () {
+    Future.delayed(Duration(seconds: 5), () {
       _checkMemoryUsage();
       _scheduleMemoryCheck(); // Schedule next check
     });
@@ -64,260 +57,156 @@ class MemoryMonitor extends GetxService {
   }
 
   double _estimateMemoryUsage() {
-    double totalUsage = 0.0;
-
     try {
-      // Get CSV data service memory usage
-      if (Get.isRegistered<CsvDataService>()) {
-        final csvService = Get.find<CsvDataService>();
-        totalUsage += csvService.getCurrentMemoryUsageMB();
-      }
-
-      // Get background processor memory usage
-      if (Get.isRegistered<BackgroundProcessor>()) {
-        final backgroundProcessor = Get.find<BackgroundProcessor>();
-        totalUsage += backgroundProcessor.getMemoryUsageEstimate();
-      }
-
-      // Add base app memory estimate (rough)
-      totalUsage += 30.0; // Base app memory
-
-      // Add system memory pressure if available (Android/iOS specific)
+      // For mobile platforms, we can get process memory info
       if (Platform.isAndroid || Platform.isIOS) {
-        // This is a rough estimate - in a real app you might use platform channels
-        // to get actual memory usage from the native side
-        totalUsage += _getSystemMemoryPressure();
+        // This is an approximation - actual implementation would require platform channels
+        return _approximateMemoryUsage();
+      } else {
+        // For other platforms, use a different approach
+        return _approximateMemoryUsage();
       }
-
     } catch (e) {
-      log('MemoryMonitor: Error estimating memory: $e');
-      totalUsage = 50.0; // Fallback estimate
+      return 0.0;
     }
-
-    return totalUsage;
   }
 
-  double _getSystemMemoryPressure() {
-    // This is a placeholder - in a real implementation you would use
-    // platform channels to get actual system memory pressure
-    return 20.0; // Rough estimate
+  double _approximateMemoryUsage() {
+    // This is a rough approximation based on object counts and sizes
+    // In a real implementation, you might use platform-specific APIs
+
+    // Trigger a minor garbage collection to get more accurate readings
+    List.generate(100, (index) => []).clear();
+
+    // Return a mock value for demonstration
+    // In production, this would be replaced with actual memory measurement
+    return 50.0 + (DateTime.now().millisecondsSinceEpoch % 1000) / 20.0;
   }
 
-  void _updateMemoryStatus(double usage) {
-    isMemoryWarning.value = usage > _warningThresholdMB;
-    isMemoryCritical.value = usage > _criticalThresholdMB;
-    isMemoryEmergency.value = usage > _emergencyThresholdMB;
-
-    // Update pressure level
-    if (usage > _emergencyThresholdMB) {
-      memoryPressureLevel.value = 'emergency';
-    } else if (usage > _criticalThresholdMB) {
-      memoryPressureLevel.value = 'critical';
-    } else if (usage > _warningThresholdMB) {
-      memoryPressureLevel.value = 'warning';
+  void _updateMemoryStatus(double memoryMB) {
+    if (memoryMB >= _criticalThresholdMB) {
+      isMemoryCritical.value = true;
+      isMemoryWarning.value = true;
+      log('🚨 MemoryMonitor: CRITICAL memory usage: ${memoryMB.toStringAsFixed(1)}MB');
+      _triggerEmergencyCleanup();
+    } else if (memoryMB >= _warningThresholdMB) {
+      isMemoryCritical.value = false;
+      isMemoryWarning.value = true;
+      log('⚠️ MemoryMonitor: High memory usage: ${memoryMB.toStringAsFixed(1)}MB');
+      _triggerMemoryCleanup();
     } else {
-      memoryPressureLevel.value = 'normal';
+      isMemoryCritical.value = false;
+      isMemoryWarning.value = false;
     }
   }
 
-  void _updateMemoryHistory(double usage) {
-    _memoryHistory.add(usage);
+  void _updateMemoryHistory(double memoryMB) {
+    _memoryHistory.add(memoryMB);
     if (_memoryHistory.length > _maxHistorySize) {
       _memoryHistory.removeAt(0);
     }
   }
 
-  void _handleMemoryPressure(double usage) {
-    if (usage > _emergencyThresholdMB) {
-      _performEmergencyCleanup();
-    } else if (usage > _criticalThresholdMB) {
-      _performCriticalCleanup();
-    } else if (usage > _warningThresholdMB) {
-      _performWarningCleanup();
+  void _triggerMemoryCleanup() {
+    log('🧹 MemoryMonitor: Triggering memory cleanup');
+
+    // Request garbage collection
+    _requestGarbageCollection();
+
+    // Notify other services to clean up
+    try {
+      final csvService = Get.find<CsvDataService>();
+      csvService.performMemoryCleanup();
+    } catch (e) {
+      log('MemoryMonitor: Error during cleanup: $e');
     }
   }
 
-  void _performEmergencyCleanup() {
-    log('🚨 MemoryMonitor: EMERGENCY cleanup triggered at ${currentMemoryUsageMB.value.toStringAsFixed(1)}MB');
+  void _triggerEmergencyCleanup() {
+    log('🚨 MemoryMonitor: Triggering EMERGENCY cleanup');
 
-    // Emergency cleanup - most aggressive
-    _performCriticalCleanup();
+    // More aggressive cleanup
+    _requestGarbageCollection();
 
-    // Cancel non-essential background tasks
-    if (Get.isRegistered<BackgroundProcessor>()) {
-      final backgroundProcessor = Get.find<BackgroundProcessor>();
-      backgroundProcessor.cancelAllTasks();
+    // Clear all non-essential data
+    try {
+      final csvService = Get.find<CsvDataService>();
+
+      // Force clear optional CSV data
+      csvService.accountMasterCsv.value = '';
+      csvService.allAccountsCsv.value = '';
+      csvService.customerInfoCsv.value = '';
+      csvService.supplierInfoCsv.value = '';
+    } catch (e) {
+      log('MemoryMonitor: Error during emergency cleanup: $e');
     }
+  }
 
-    // Force multiple garbage collection cycles
+  void _requestGarbageCollection() {
+    // Multiple approaches to encourage garbage collection
     for (int i = 0; i < 3; i++) {
-      _forceGarbageCollection();
+      List.generate(1000, (index) => []).clear();
     }
-
-    cleanupCount.value++;
-    lastCleanup.value = DateTime.now();
   }
 
-  void _performCriticalCleanup() {
-    log('⚠️ MemoryMonitor: CRITICAL cleanup triggered at ${currentMemoryUsageMB.value.toStringAsFixed(1)}MB');
-
-    // Critical cleanup - aggressive
-    _performWarningCleanup();
-
-    // Clear more cached data
-    if (Get.isRegistered<CsvDataService>()) {
-      final csvService = Get.find<CsvDataService>();
-      csvService.clearParsedCache();
-
-      // Clear non-essential CSV data from memory (but keep in storage)
-      csvService.performMemoryCleanup();
-    }
-
-    // Force garbage collection
-    _forceGarbageCollection();
-
-    cleanupCount.value++;
-    lastCleanup.value = DateTime.now();
-  }
-
-  void _performWarningCleanup() {
-    log('💡 MemoryMonitor: WARNING cleanup triggered at ${currentMemoryUsageMB.value.toStringAsFixed(1)}MB');
-
-    // Warning cleanup - gentle
-    if (Get.isRegistered<CsvDataService>()) {
-      final csvService = Get.find<CsvDataService>();
-      csvService.performMemoryCleanup();
-    }
-
-    // Optimize background processor memory
-    if (Get.isRegistered<BackgroundProcessor>()) {
-      final backgroundProcessor = Get.find<BackgroundProcessor>();
-      backgroundProcessor.optimizeMemory();
-    }
-
-    cleanupCount.value++;
-    lastCleanup.value = DateTime.now();
-  }
-
-  void _forceGarbageCollection() {
-    // This is a hint to the Dart VM to consider garbage collection
-    // Create and immediately discard objects to trigger GC
-    final temp = List.generate(1000, (index) => List.filled(100, index));
-    temp.clear();
-  }
-
-  /// Get memory trend (increasing, decreasing, stable)
+  /// Get memory trend (increasing, stable, decreasing)
   String getMemoryTrend() {
-    if (_memoryHistory.length < 5) return 'unknown';
+    if (_memoryHistory.length < 5) return 'Unknown';
 
-    final recent = _memoryHistory.skip(_memoryHistory.length - 5).toList();
+    final recent = _memoryHistory.sublist(_memoryHistory.length - 5);
     final average = recent.reduce((a, b) => a + b) / recent.length;
     final latest = recent.last;
 
     if (latest > average * 1.1) {
-      return 'increasing';
+      return 'Increasing';
     } else if (latest < average * 0.9) {
-      return 'decreasing';
+      return 'Decreasing';
     } else {
-      return 'stable';
+      return 'Stable';
     }
   }
 
-  /// Get memory usage statistics
+  /// Get memory statistics
   Map<String, dynamic> getMemoryStats() {
-    final stats = {
+    return {
       'current': currentMemoryUsageMB.value,
-      'trend': getMemoryTrend(),
-      'pressureLevel': memoryPressureLevel.value,
-      'cleanupCount': cleanupCount.value,
-      'lastCleanup': lastCleanup.value.toIso8601String(),
       'isWarning': isMemoryWarning.value,
       'isCritical': isMemoryCritical.value,
-      'isEmergency': isMemoryEmergency.value,
+      'trend': getMemoryTrend(),
+      'warningThreshold': _warningThresholdMB,
+      'criticalThreshold': _criticalThresholdMB,
+      'history': List.from(_memoryHistory),
     };
-
-    if (_memoryHistory.isNotEmpty) {
-      stats['min'] = _memoryHistory.reduce((a, b) => a < b ? a : b);
-      stats['max'] = _memoryHistory.reduce((a, b) => a > b ? a : b);
-      stats['average'] = _memoryHistory.reduce((a, b) => a + b) / _memoryHistory.length;
-    }
-
-    return stats;
   }
 
-  /// Force memory cleanup manually
-  void forceCleanup({bool aggressive = false}) {
-    log('🧹 MemoryMonitor: Manual cleanup requested (aggressive: $aggressive)');
-
-    if (aggressive) {
-      _performCriticalCleanup();
-    } else {
-      _performWarningCleanup();
-    }
+  /// Force a memory check
+  void forceMemoryCheck() {
+    _checkMemoryUsage();
   }
 
-  /// Check if memory usage is trending upward dangerously
-  bool isMemoryTrendingUp() {
-    if (_memoryHistory.length < 10) return false;
-
-    final recent = _memoryHistory.skip(_memoryHistory.length - 5).toList();
-    final older = _memoryHistory.skip(_memoryHistory.length - 10).take(5).toList();
-
-    final recentAvg = recent.reduce((a, b) => a + b) / recent.length;
-    final olderAvg = older.reduce((a, b) => a + b) / older.length;
-
-    return recentAvg > olderAvg * 1.2; // 20% increase trend
-  }
-
-  /// Get color for memory status display
-  String getMemoryStatusColor() {
-    switch (memoryPressureLevel.value) {
-      case 'emergency':
-        return '#FF0000'; // Red
-      case 'critical':
-        return '#FF6600'; // Orange-Red
-      case 'warning':
-        return '#FFAA00'; // Orange
-      default:
-        return '#00AA00'; // Green
-    }
-  }
-
-  /// Get memory status description
-  String getMemoryStatusDescription() {
-    final usage = currentMemoryUsageMB.value;
-    final trend = getMemoryTrend();
-
-    switch (memoryPressureLevel.value) {
-      case 'emergency':
-        return 'Emergency: ${usage.toStringAsFixed(1)}MB - App may crash soon!';
-      case 'critical':
-        return 'Critical: ${usage.toStringAsFixed(1)}MB - Performance severely impacted';
-      case 'warning':
-        return 'Warning: ${usage.toStringAsFixed(1)}MB - Memory usage high ($trend)';
-      default:
-        return 'Normal: ${usage.toStringAsFixed(1)}MB - Memory usage healthy ($trend)';
-    }
-  }
-
-  /// Predict if memory will exceed threshold soon
-  bool predictMemoryPressure() {
-    if (_memoryHistory.length < 10) return false;
-
-    final trend = getMemoryTrend();
-    final current = currentMemoryUsageMB.value;
-
-    // If trending up and close to warning threshold
-    if (trend == 'increasing' && current > _warningThresholdMB * 0.8) {
-      return true;
-    }
-
-    return false;
-  }
-
-  @override
-  void onClose() {
+  /// Reset memory monitoring
+  void reset() {
     _memoryHistory.clear();
-    super.onClose();
+    currentMemoryUsageMB.value = 0.0;
+    isMemoryWarning.value = false;
+    isMemoryCritical.value = false;
+  }
+
+  /// Check if it's safe to perform memory-intensive operations
+  bool isSafeForLargeOperations() {
+    return !isMemoryWarning.value && getMemoryTrend() != 'Increasing';
+  }
+
+  /// Get recommended action based on current memory state
+  String getRecommendedAction() {
+    if (isMemoryCritical.value) {
+      return 'Stop all non-essential operations and clear data';
+    } else if (isMemoryWarning.value) {
+      return 'Reduce data processing and enable pagination';
+    } else if (getMemoryTrend() == 'Increasing') {
+      return 'Monitor closely and prepare for cleanup';
+    } else {
+      return 'Normal operation';
+    }
   }
 }

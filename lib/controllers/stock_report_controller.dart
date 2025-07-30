@@ -1,7 +1,5 @@
 // lib/controllers/stock_report_controller.dart
 
-import 'dart:developer';
-
 import 'package:get/get.dart';
 import 'package:flutter/material.dart'; // For DateUtils (though not directly used here, useful for other date comparisons)
 import 'package:csv/csv.dart'; // Not directly used here, but good to keep if other methods use it
@@ -13,13 +11,16 @@ class StockReportController extends GetxController {
   var errorMessage = Rx<String?>(null);
   var searchQuery = ''.obs;
 
+  // New: Item type filter
+  var itemTypeFilter = 'All'.obs;
+
   // New observables for sorting
   var sortByColumn = 'Item Name'.obs; // Default sort by Item Name
   var sortAscending = true.obs; // Default sort ascending
 
-  // Enhanced pagination variables
+  // Pagination variables
   var currentPage = 0.obs;
-  var itemsPerPage = 50.obs; // Default 50 items per page
+  var itemsPerPage = 50.obs; // Reduced from potential unlimited to 50 items per page
   var totalItems = 0.obs;
   var totalPages = 0.obs;
 
@@ -27,14 +28,9 @@ class StockReportController extends GetxController {
   var allStockData = <Map<String, dynamic>>[]; // Internal storage for all data
   var totalCurrentStock = 0.0.obs;
 
-  // Memory management and processing
+  // Memory management
   var isProcessingLargeDataset = false.obs;
   var processingProgress = 0.0.obs;
-
-  // Cache management
-  DateTime? _lastProcessedTime;
-  bool _hasProcessedData = false;
-  String _lastDataHash = '';
 
   final CsvDataService _csvDataService = Get.find<CsvDataService>();
 
@@ -42,37 +38,15 @@ class StockReportController extends GetxController {
   void onInit() {
     super.onInit();
     // Re-apply filter whenever any relevant observable changes
-    ever(_csvDataService.itemDetailCsv, (_) => _checkAndReprocess());
-    ever(_csvDataService.itemMasterCsv, (_) => _checkAndReprocess());
-    ever(searchQuery, (_) => _applyFilterAndSort());
-    ever(sortByColumn, (_) => _applyFilterAndSort()); // Trigger filter on sort column change
-    ever(sortAscending, (_) => _applyFilterAndSort()); // Trigger filter on sort order change
+    ever(_csvDataService.itemDetailCsv, (_) => _applyFilter());
+    ever(_csvDataService.itemMasterCsv, (_) => _applyFilter());
+    ever(searchQuery, (_) => _applyFilter());
+    ever(itemTypeFilter, (_) => _applyFilter()); // New: Re-apply filter on item type change
+    ever(sortByColumn, (_) => _applyFilter()); // Trigger filter on sort column change
+    ever(sortAscending, (_) => _applyFilter()); // Trigger filter on sort order change
     ever(currentPage, (_) => _updateDisplayedData()); // Update displayed data when page changes
 
-    // Check if CSV service already has data loaded
-    if (_csvDataService.hasData('itemDetailCsv') && _csvDataService.hasData('itemMasterCsv')) {
-      log('StockReportController: CSV data already available, processing...');
-      _processStockData();
-    } else {
-      loadStockReport(); // Initial data load
-    }
-  }
-
-  /// Check if data needs reprocessing based on changes
-  void _checkAndReprocess() {
-    final currentHash = _generateDataHash();
-    if (currentHash != _lastDataHash) {
-      _lastDataHash = currentHash;
-      _hasProcessedData = false;
-      _processStockData();
-    }
-  }
-
-  /// Generate hash of current data to detect changes
-  String _generateDataHash() {
-    final itemDetailLength = _csvDataService.itemDetailCsv.value.length;
-    final itemMasterLength = _csvDataService.itemMasterCsv.value.length;
-    return '$itemDetailLength-$itemMasterLength';
+    loadStockReport(); // Initial data load
   }
 
   /// Public method to set the column to sort by.
@@ -126,37 +100,10 @@ class StockReportController extends GetxController {
     processingProgress.value = 0.0;
 
     try {
-      // Check if we already have processed data and it's recent (unless force refresh)
-      if (!forceRefresh && _hasProcessedData && _lastProcessedTime != null) {
-        final timeSinceLastProcess = DateTime.now().difference(_lastProcessedTime!);
-        if (timeSinceLastProcess < Duration(minutes: 30) && allStockData.isNotEmpty) {
-          log('StockReportController: Using recently processed stock data');
-          isLoading.value = false;
-          processingProgress.value = 1.0;
-          return;
-        }
-      }
-
       await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
-      await _processStockData();
 
-    } catch (e, st) {
-      errorMessage.value = 'Failed to load stock data: $e';
-      print('Error loading stock data: $e\n$st');
-    } finally {
-      isLoading.value = false;
-      processingProgress.value = 1.0;
-    }
-  }
-
-  /// Process stock data from CSV service
-  Future<void> _processStockData() async {
-    try {
       if (_csvDataService.itemDetailCsv.value.isEmpty || _csvDataService.itemMasterCsv.value.isEmpty) {
         errorMessage.value = 'Required CSV data (ItemMaster or ItemDetail) is empty. Please ensure files are on Google Drive.';
-        allStockData.clear();
-        filteredStockData.value = [];
-        totalCurrentStock.value = 0.0;
         return;
       }
 
@@ -170,27 +117,25 @@ class StockReportController extends GetxController {
         await _processLargeDataset();
       } else {
         // Process normally for small datasets
-        await _processNormalDataset();
+        _applyFilter();
       }
 
       if (allStockData.isEmpty) {
         errorMessage.value = 'No stock data found after processing.';
-      } else {
-        _hasProcessedData = true;
-        _lastProcessedTime = DateTime.now();
-        _lastDataHash = _generateDataHash();
       }
 
     } catch (e, st) {
-      errorMessage.value = 'Failed to process stock data: $e';
-      print('Error processing stock data: $e\n$st');
+      errorMessage.value = 'Failed to load stock data: $e';
+      print('Error loading stock data: $e\n$st');
+    } finally {
+      isLoading.value = false;
+      processingProgress.value = 1.0;
     }
   }
 
   /// Process large datasets in chunks to prevent memory issues
   Future<void> _processLargeDataset() async {
-    const int chunkSize = 1000; // Process 1000 items at a time
-    processingProgress.value = 0.0;
+    const int chunkSize = 500; // Process 500 items at a time
 
     // Parse CSVs into lists of maps
     final List<Map<String, dynamic>> allItemDetails =
@@ -227,67 +172,10 @@ class StockReportController extends GetxController {
       // Update progress
       processingProgress.value = (i + chunkSize) / filteredRawItemDetails.length;
 
-      // Allow UI to update and prevent blocking
-      await Future.delayed(Duration(milliseconds: 20));
+      // Allow UI to update
+      await Future.delayed(Duration(milliseconds: 10));
     }
 
-    totalCurrentStock.value = currentTotalStock;
-    _applyFilterAndSort();
-  }
-
-  /// Process normal-sized datasets
-  Future<void> _processNormalDataset() async {
-    final List<Map<String, dynamic>> processedList = [];
-    double currentTotalStock = 0.0;
-
-    // Parse CSVs into lists of maps
-    final List<Map<String, dynamic>> allItemDetails =
-    CsvUtils.toMaps(
-        _csvDataService.itemDetailCsv.value,
-        stringColumns: ['BatchNo', 'ItemCode', 'txt_pkg', 'cmb_unit']);
-
-    final List<Map<String, dynamic>> allItemsMaster =
-    CsvUtils.toMaps(
-        _csvDataService.itemMasterCsv.value,
-        stringColumns: ['ItemCode', 'ItemName', 'ItemType']);
-
-    final filteredRawItemDetails = allItemDetails.where((itemDetail) {
-      final currentStock = double.tryParse(itemDetail['Currentstock']?.toString() ?? '0') ?? 0.0;
-      return currentStock != 0;
-    }).toList();
-
-    for (final itemDetail in filteredRawItemDetails) {
-      final itemCode = itemDetail['ItemCode']?.toString().trim() ?? '';
-      final batchNo = itemDetail['BatchNo']?.toString().trim() ?? '';
-      final txtPkg = itemDetail['txt_pkg']?.toString().trim() ?? '';
-      final cmbUnit = itemDetail['cmb_unit']?.toString().trim() ?? '';
-
-      if (itemCode.isEmpty || batchNo.isEmpty || txtPkg.isEmpty || cmbUnit.isEmpty) {
-        continue;
-      }
-
-      final masterItem = allItemsMaster.cast<Map<String, dynamic>?>().firstWhere(
-            (item) => item?['ItemCode']?.toString().trim() == itemCode,
-        orElse: () => null,
-      );
-      final itemName = masterItem?['ItemName']?.toString().trim() ?? 'N/A';
-      final itemType = masterItem?['ItemType']?.toString().trim() ?? 'N/A';
-
-      final pkgUnit = '$txtPkg $cmbUnit'.trim();
-      final currentStock = double.tryParse(itemDetail['Currentstock']?.toString() ?? '0') ?? 0.0;
-
-      processedList.add({
-        'Item Code': itemCode,
-        'Item Name': itemName,
-        'Batch No': batchNo,
-        'Package': pkgUnit,
-        'Current Stock': currentStock,
-        'Type': itemType,
-      });
-      currentTotalStock += currentStock;
-    }
-
-    allStockData = processedList;
     totalCurrentStock.value = currentTotalStock;
     _applyFilterAndSort();
   }
@@ -332,27 +220,94 @@ class StockReportController extends GetxController {
     return processedList;
   }
 
-  /// Apply search filter and sorting to processed data
-  void _applyFilterAndSort() {
-    if (allStockData.isEmpty) {
+  /// Applies search filter and sorting to the stock data.
+  void _applyFilter() {
+    if (_csvDataService.itemDetailCsv.value.isEmpty || _csvDataService.itemMasterCsv.value.isEmpty) {
+      allStockData.clear();
       filteredStockData.value = [];
+      totalCurrentStock.value = 0.0;
       totalItems.value = 0;
       totalPages.value = 0;
       return;
     }
 
-    final search = searchQuery.value.toLowerCase().trim();
+    // If not processing as large dataset, use the original logic
+    if (!isProcessingLargeDataset.value) {
+      final List<Map<String, dynamic>> processedList = [];
+      double currentTotalStock = 0.0;
 
-    // Apply search filter
+      // Parse CSVs into lists of maps
+      final List<Map<String, dynamic>> allItemDetails =
+      CsvUtils.toMaps(
+          _csvDataService.itemDetailCsv.value,
+          stringColumns: ['BatchNo', 'ItemCode', 'txt_pkg', 'cmb_unit']);
+
+      final List<Map<String, dynamic>> allItemsMaster =
+      CsvUtils.toMaps(
+          _csvDataService.itemMasterCsv.value,
+          stringColumns: ['ItemCode', 'ItemName', 'ItemType']);
+
+      final filteredRawItemDetails = allItemDetails.where((itemDetail) {
+        final currentStock = double.tryParse(itemDetail['Currentstock']?.toString() ?? '0') ?? 0.0;
+        return currentStock != 0;
+      }).toList();
+
+      for (final itemDetail in filteredRawItemDetails) {
+        final itemCode = itemDetail['ItemCode']?.toString().trim() ?? '';
+        final batchNo = itemDetail['BatchNo']?.toString().trim() ?? '';
+        final txtPkg = itemDetail['txt_pkg']?.toString().trim() ?? '';
+        final cmbUnit = itemDetail['cmb_unit']?.toString().trim() ?? '';
+
+        if (itemCode.isEmpty || batchNo.isEmpty || txtPkg.isEmpty || cmbUnit.isEmpty) {
+          continue;
+        }
+
+        final masterItem = allItemsMaster.cast<Map<String, dynamic>?>().firstWhere(
+              (item) => item?['ItemCode']?.toString().trim() == itemCode,
+          orElse: () => null,
+        );
+        final itemName = masterItem?['ItemName']?.toString().trim() ?? 'N/A';
+        final itemType = masterItem?['ItemType']?.toString().trim() ?? 'N/A';
+
+        final pkgUnit = '$txtPkg $cmbUnit'.trim();
+        final currentStock = double.tryParse(itemDetail['Currentstock']?.toString() ?? '0') ?? 0.0;
+
+        processedList.add({
+          'Item Code': itemCode,
+          'Item Name': itemName,
+          'Batch No': batchNo,
+          'Package': pkgUnit,
+          'Current Stock': currentStock,
+          'Type': itemType,
+        });
+        currentTotalStock += currentStock;
+      }
+
+      allStockData = processedList;
+      totalCurrentStock.value = currentTotalStock;
+    }
+
+    _applyFilterAndSort();
+  }
+
+  /// Apply search filter and sorting to processed data
+  void _applyFilterAndSort() {
+    final search = searchQuery.value.toLowerCase().trim();
+    final typeFilter = itemTypeFilter.value;
+
+    // Apply search filter and item type filter
     List<Map<String, dynamic>> filteredList = allStockData;
-    if (search.isNotEmpty) {
+    if (search.isNotEmpty || typeFilter != 'All') {
       filteredList = allStockData.where((item) {
         final itemCode = item['Item Code']?.toString().toLowerCase() ?? '';
         final itemName = item['Item Name']?.toString().toLowerCase() ?? '';
-        final batchNo = item['Batch No']?.toString().toLowerCase() ?? '';
-        return itemCode.contains(search) ||
-            itemName.contains(search) ||
-            batchNo.contains(search);
+        final itemType = item['Type']?.toString() ?? '';
+
+        bool matchesSearch = search.isEmpty ||
+            (itemCode.contains(search) || itemName.contains(search));
+        bool matchesType = typeFilter == 'All' || itemType == typeFilter;
+
+        return matchesSearch && matchesType;
       }).toList();
     }
 
@@ -362,31 +317,16 @@ class StockReportController extends GetxController {
       dynamic valB;
       int compareResult = 0;
 
-      switch (sortByColumn.value) {
-        case 'Item Name':
-          valA = a['Item Name']?.toString().toLowerCase() ?? '';
-          valB = b['Item Name']?.toString().toLowerCase() ?? '';
+      if (sortByColumn.value == 'Item Name') {
+        valA = a['Item Name']?.toString().toLowerCase() ?? '';
+        valB = b['Item Name']?.toString().toLowerCase() ?? '';
+        compareResult = valA.compareTo(valB);
+      } else if (sortByColumn.value == 'Current Stock') {
+        valA = a['Current Stock'] ?? 0.0;
+        valB = b['Current Stock'] ?? 0.0;
+        if (valA is num && valB is num) {
           compareResult = valA.compareTo(valB);
-          break;
-        case 'Item Code':
-          valA = a['Item Code']?.toString().toLowerCase() ?? '';
-          valB = b['Item Code']?.toString().toLowerCase() ?? '';
-          compareResult = valA.compareTo(valB);
-          break;
-        case 'Current Stock':
-          valA = a['Current Stock'] ?? 0.0;
-          valB = b['Current Stock'] ?? 0.0;
-          if (valA is num && valB is num) {
-            compareResult = valA.compareTo(valB);
-          }
-          break;
-        case 'Type':
-          valA = a['Type']?.toString().toLowerCase() ?? '';
-          valB = b['Type']?.toString().toLowerCase() ?? '';
-          compareResult = valA.compareTo(valB);
-          break;
-        default:
-          compareResult = 0;
+        }
       }
 
       return sortAscending.value ? compareResult : -compareResult;
@@ -441,47 +381,17 @@ class StockReportController extends GetxController {
   bool get hasNextPage => currentPage.value < totalPages.value - 1;
   bool get hasPreviousPage => currentPage.value > 0;
 
-  /// Clear processed data cache to force refresh
-  void clearCache() {
-    _hasProcessedData = false;
-    _lastProcessedTime = null;
-    _lastDataHash = '';
-    allStockData.clear();
-    filteredStockData.value = [];
-    totalCurrentStock.value = 0.0;
-    print('StockReportController: Cache cleared');
-  }
+  /// Get unique item types for filter dropdown
+  List<String> getUniqueItemTypes() {
+    final Set<String> uniqueTypes = {'All'};
 
-  /// Get processing status info
-  String getProcessingInfo() {
-    if (isProcessingLargeDataset.value) {
-      return 'Processing large dataset: ${(processingProgress.value * 100).toStringAsFixed(1)}%';
+    for (final item in allStockData) {
+      final itemType = item['Type']?.toString().trim() ?? '';
+      if (itemType.isNotEmpty && itemType != 'N/A') {
+        uniqueTypes.add(itemType);
+      }
     }
-    return 'Ready';
+
+    return uniqueTypes.toList()..sort();
   }
-
-  /// Get available page sizes for user selection
-  List<int> get availablePageSizes => [25, 50, 100, 200, 500];
-
-  /// Jump to first page
-  void goToFirstPage() {
-    currentPage.value = 0;
-  }
-
-  /// Jump to last page
-  void goToLastPage() {
-    if (totalPages.value > 0) {
-      currentPage.value = totalPages.value - 1;
-    }
-  }
-
-  /// Get current page info for display
-  Map<String, dynamic> get pageInfo => {
-    'current': currentPage.value + 1,
-    'total': totalPages.value,
-    'itemsPerPage': itemsPerPage.value,
-    'totalItems': totalItems.value,
-    'hasNext': hasNextPage,
-    'hasPrevious': hasPreviousPage,
-  };
 }
