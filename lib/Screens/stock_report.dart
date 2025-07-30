@@ -110,27 +110,23 @@ class _StockScreenState extends State<StockScreen> {
                   physics: const AlwaysScrollableScrollPhysics(), // Allows pull-to-refresh even if content doesn't fill
                   child: Padding(
                     padding: const EdgeInsets.all(8.0), // Padding around the table
-                    child: PaginatedDataTable( // <--- No horizontal SingleChildScrollView or ConstrainedBox here!
-                      key: ValueKey(filteredData.hashCode), // Forces rebuild when data changes
-                      headingRowColor: MaterialStateProperty.all(Theme.of(context).colorScheme.surfaceVariant),
-                      columnSpacing: 24,
-                      rowsPerPage: filteredData.isEmpty
-                          ? 1
-                          : (filteredData.length < 10 ? filteredData.length : 10),
-                      availableRowsPerPage: filteredData.length < 10 && filteredData.isNotEmpty
-                          ? [filteredData.isEmpty ? 1 : (filteredData.length < 10 ? filteredData.length : 10)]
-                          : const [10, 25, 50],
-                      showFirstLastButtons: true,
-                      columns: [
-                        DataColumn(label: Text('Sr.', style: Theme.of(context).textTheme.titleSmall)),
-                        DataColumn(label: Text('Item Code', style: Theme.of(context).textTheme.titleSmall)),
-                        DataColumn(label: Text('Item Name', style: Theme.of(context).textTheme.titleSmall)),
-                        DataColumn(label: Text('Batch No', style: Theme.of(context).textTheme.titleSmall)),
-                        DataColumn(label: Text('Package', style: Theme.of(context).textTheme.titleSmall)),
-                        DataColumn(label: Text('Current Stock', style: Theme.of(context).textTheme.titleSmall)),
-                        DataColumn(label: Text('Type', style: Theme.of(context).textTheme.titleSmall)),
-                      ],
-                      source: StockDataSource(filteredData, context),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: DataTable(
+                        key: ValueKey(filteredData.hashCode), // Forces rebuild when data changes
+                        headingRowColor: MaterialStateProperty.all(Theme.of(context).colorScheme.surfaceVariant),
+                        columnSpacing: 24,
+                        columns: [
+                          DataColumn(label: Text('Sr.', style: Theme.of(context).textTheme.titleSmall)),
+                          DataColumn(label: Text('Item Code', style: Theme.of(context).textTheme.titleSmall)),
+                          DataColumn(label: Text('Item Name', style: Theme.of(context).textTheme.titleSmall)),
+                          DataColumn(label: Text('Batch No', style: Theme.of(context).textTheme.titleSmall)),
+                          DataColumn(label: Text('Package', style: Theme.of(context).textTheme.titleSmall)),
+                          DataColumn(label: Text('Current Stock', style: Theme.of(context).textTheme.titleSmall)),
+                          DataColumn(label: Text('Type', style: Theme.of(context).textTheme.titleSmall)),
+                        ],
+                        rows: _buildDataRows(filteredData, context),
+                      ),
                     ),
                   ),
                 ),
@@ -231,6 +227,31 @@ class _StockScreenState extends State<StockScreen> {
     ));
   }
 
+  List<DataRow> _buildDataRows(List<Map<String, dynamic>> data, BuildContext context) {
+    final NumberFormat stockFormatter = NumberFormat('#,##0.##');
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color surfaceColor = Theme.of(context).colorScheme.surface;
+    final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
+
+    return data.asMap().entries.map<DataRow>((entry) {
+      final int index = entry.key;
+      final Map<String, dynamic> row = entry.value;
+
+      return DataRow(
+        color: MaterialStateProperty.all(index.isEven ? surfaceColor : surfaceVariantColor),
+        cells: [
+          DataCell(Text('${index + 1}', style: TextStyle(color: onSurfaceColor))),
+          DataCell(Text(row['Item Code']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
+          DataCell(Text(row['Item Name']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
+          DataCell(Text(row['Batch No']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
+          DataCell(Text(row['Package']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
+          DataCell(Text(stockFormatter.format(row['Current Stock'] ?? 0), style: TextStyle(color: onSurfaceColor))),
+          DataCell(Text(row['Type']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
+        ],
+      );
+    }).toList();
+  }
+
   Widget _buildTotalStockCard(BuildContext context) {
     final NumberFormat formatter = NumberFormat('#,##0.##');
     final Color primaryColor = Theme.of(context).primaryColor;
@@ -277,51 +298,3 @@ class _StockScreenState extends State<StockScreen> {
   }
 }
 
-class StockDataSource extends DataTableSource {
-  final List<Map<String, dynamic>> data;
-  final BuildContext context;
-  final NumberFormat _stockFormatter = NumberFormat('#,##0.##');
-
-  StockDataSource(this.data, this.context);
-
-  @override
-  DataRow? getRow(int index) {
-    if (index >= data.length) return null;
-    final row = data[index];
-
-    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
-    final Color surfaceColor = Theme.of(context).colorScheme.surface;
-    final Color surfaceVariantColor = Theme.of(context).colorScheme.surfaceVariant;
-
-    // Get the formatted stock value
-    final formattedStock = _stockFormatter.format(row['Current Stock'] ?? 0);
-    final itemType = row['Type']?.toString() ?? '';
-
-    // Print to console using log() from dart:developer
-    log(formattedStock);//
-
-    return DataRow.byIndex(
-      index: index,
-      color: MaterialStateProperty.all(index.isEven ? surfaceColor : surfaceVariantColor),
-      cells: [
-        DataCell(Text('${index + 1}', style: TextStyle(color: onSurfaceColor))),
-        DataCell(Text(row['Item Code']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
-        DataCell(Text(row['Item Name']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
-        DataCell(Text(row['Batch No']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
-        DataCell(Text(row['Package']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
-        DataCell(Text(formattedStock, style: TextStyle(color: onSurfaceColor))),
-        // Display formatted stock
-        DataCell(Text(row['Type']?.toString() ?? '', style: TextStyle(color: onSurfaceColor))),
-      ],
-    );
-  }
-
-  @override
-  int get rowCount => data.length;
-
-  @override
-  bool get isRowCountApproximate => false;
-
-  @override
-  int get selectedRowCount => 0;
-}
