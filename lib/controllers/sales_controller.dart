@@ -107,7 +107,8 @@ class SalesController extends GetxController with BaseRemoteController {
   Future<void> _loadSales({bool forceRefresh = false}) async {
     try {
       // 1. Load all necessary CSVs from Google Drive (or cache).
-      await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
+      // Only force download if explicitly requested via refresh
+    await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
 
       // Get the raw CSV string content from the service.
       final String salesMasterCsv = _csvDataService.salesMasterCsv.value;

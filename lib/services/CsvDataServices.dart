@@ -54,8 +54,7 @@ class CsvDataService extends GetxController {
   void onInit() {
     super.onInit();
     _startMemoryMonitoring();
-    // Potentially load from cache on init, but don't force download
-    // loadAllCsvs(forceDownload: false); // Or load specific ones if needed
+    // Don't automatically load CSVs on init - load on-demand only
   }
 
   /// Monitor memory usage and trigger cleanup if needed
@@ -106,6 +105,13 @@ class CsvDataService extends GetxController {
       return;
     }
 
+    // Only load essential CSVs unless specifically requested
+    if (!forceDownload) {
+      log('📋 CsvDataService: Loading only from cache, no automatic download');
+      _loadFromCacheOnly();
+      return;
+    }
+
     // If another load is in progress
     if (_loadingFuture != null) {
       if (forceDownload) {
@@ -128,6 +134,28 @@ class CsvDataService extends GetxController {
     await _loadingFuture;
     _loadingFuture = null;
     _hasDownloadedOnce = true;
+  }
+
+  /// Load only from cache without downloading new data
+  void _loadFromCacheOnly() {
+    final List<Map<String, dynamic>> csvConfigs = [
+      {'key': _salesMasterCacheKey, 'filename': 'SalesInvoiceMaster.csv', 'priority': 1},
+      {'key': _salesDetailsCacheKey, 'filename': 'SalesInvoiceDetails.csv', 'priority': 1},
+      {'key': _itemMasterCacheKey, 'filename': 'ItemMaster.csv', 'priority': 1},
+      {'key': _itemDetailCacheKey, 'filename': 'ItemDetail.csv', 'priority': 1},
+      {'key': _accountMasterCacheKey, 'filename': 'AccountMaster.csv', 'priority': 2},
+      {'key': _allAccountsCacheKey, 'filename': 'AllAccounts.csv', 'priority': 2},
+      {'key': _customerInfoCacheKey, 'filename': 'CustomerInformation.csv', 'priority': 2},
+      {'key': _supplierInfoCacheKey, 'filename': 'SupplierInformation.csv', 'priority': 2},
+    ];
+
+    log('📁 CsvDataService: Loading CSVs from cache only.');
+    for (final config in csvConfigs) {
+      final cached = _box.read(config['key']);
+      if (cached != null && cached.isNotEmpty) {
+        _populateReactiveVarFromCache(config['key'], cached);
+      }
+    }
   }
 
   Future<void> _loadCsvsInternal({required bool forceDownload}) async {
