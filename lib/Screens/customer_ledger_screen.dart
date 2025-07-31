@@ -78,6 +78,16 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
             return Center(child: DotsWaveLoadingText(color: onSurfaceColor));
           }
 
+          if (ctrl.isProcessingData.value) {
+            return Center(
+              child: ProgressLoadingWidget(
+                progress: ctrl.dataProcessingProgress.value,
+                message: 'Processing customer data...',
+                color: primaryColor,
+              ),
+            );
+          }
+
           final names =
           ctrl.accounts.map((e) => e.accountName.toLowerCase()).toList();
           final txns = ctrl.filtered.cast<AllAccountsModel>();
