@@ -42,7 +42,21 @@ class _StockScreenState extends State<StockScreen> {
     final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
-      appBar: const CustomAppBar(title: Text('Stock Report')),
+      appBar: CustomAppBar(
+        title: const Text('Stock Report'),
+        actions: [
+          Obx(() => IconButton(
+            icon: Icon(
+              Icons.refresh, 
+              color: stockReportController.isLoading.value ? onSurfaceColor.withOpacity(0.5) : Theme.of(context).primaryColor,
+            ),
+            tooltip: 'Refresh Data',
+            onPressed: stockReportController.isLoading.value ? null : () {
+              stockReportController.loadStockReport(forceRefresh: true);
+            },
+          )),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
@@ -79,7 +93,7 @@ class _StockScreenState extends State<StockScreen> {
                         ),
                         const SizedBox(height: 20),
                         ElevatedButton(
-                          onPressed: () => stockReportController.loadStockReport(forceRefresh: true),
+                          onPressed: () => stockReportController.loadStockReport(forceRefresh: false),
                           child: const Text('Retry'),
                         ),
                       ],
@@ -105,7 +119,7 @@ class _StockScreenState extends State<StockScreen> {
               }
 
               return RefreshIndicator(
-                onRefresh: () => stockReportController.loadStockReport(forceRefresh: true),
+                onRefresh: () => stockReportController.loadStockReport(forceRefresh: false),
                 child: SingleChildScrollView( // Outer vertical scroll for all content below search
                   physics: const AlwaysScrollableScrollPhysics(), // Allows pull-to-refresh even if content doesn't fill
                   child: Padding(
