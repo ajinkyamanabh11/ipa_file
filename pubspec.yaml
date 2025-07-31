@@ -75,9 +75,7 @@ flutter:
     - assets/googleicon.png
     - assets/applogo.png
     - assets/appicon.png
-
-
-
+    - assets/walkthrough/
     - assets/loginbg1.png
     - assets/appbarimg.png
   uses-material-design: true

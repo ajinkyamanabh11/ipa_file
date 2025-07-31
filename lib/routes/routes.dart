@@ -1,4 +1,5 @@
 class Routes {
+  static const walkthrough    = '/walkthrough';
   static const login          = '/login';
   static const home           = '/home';
 

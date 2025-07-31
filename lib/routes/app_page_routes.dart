@@ -6,6 +6,7 @@ import 'package:googleapis/dataproc/v1.dart';
 import '../Screens/User_profile_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/login_screen.dart';
+import '../Screens/walkthrough_screen.dart';
 import '../screens/customer_ledger_screen.dart';
 import '../screens/transactions_screen.dart';
 import '../screens/sales_screen.dart';
@@ -18,6 +19,7 @@ import 'routes.dart';
 
 class AppPages {
   static final routes = [
+    GetPage(name: Routes.walkthrough, page: () => const WalkthroughScreen()),
     GetPage(name: Routes.login, page: () => LoginScreen()),
     GetPage(name: Routes.home, page: () => HomeScreen()),
     GetPage(name: Routes.customerLedger, page: () => const CustomerLedger_Screen()),
