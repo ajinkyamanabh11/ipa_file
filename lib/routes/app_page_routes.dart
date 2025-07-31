@@ -1,6 +1,7 @@
 import 'package:demo/Screens/Creditors_screen.dart';
 import 'package:demo/Screens/Debtors_screen.dart';
 import 'package:demo/Screens/stock_report.dart';
+import 'package:demo/Screens/splash_screen.dart';
 import 'package:get/get.dart';
 import 'package:googleapis/dataproc/v1.dart';
 import '../Screens/User_profile_screen.dart';
@@ -18,6 +19,7 @@ import 'routes.dart';
 
 class AppPages {
   static final routes = [
+    GetPage(name: Routes.splash, page: () => const SplashScreen()),
     GetPage(name: Routes.login, page: () => LoginScreen()),
     GetPage(name: Routes.home, page: () => HomeScreen()),
     GetPage(name: Routes.customerLedger, page: () => const CustomerLedger_Screen()),
