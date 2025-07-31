@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../controllers/customerLedger_Controller.dart';
 import '../widget/animated_Dots_LoadingText.dart';
 import '../widget/custom_app_bar.dart';
+import '../widget/cache_status_indicator.dart';
 
 class CreditorsScreen extends StatefulWidget {
   const CreditorsScreen({super.key});
@@ -95,6 +96,7 @@ class _CreditorsScreen extends State<CreditorsScreen> {
               onChanged: (v) => searchQ.value = v,
             ),
           ),
+          const CacheStatusIndicator(),
 
           // ───── type filter chips ─────
           Padding(

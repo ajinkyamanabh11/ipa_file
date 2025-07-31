@@ -7,6 +7,7 @@ import '../controllers/stock_report_controller.dart';
 import '../widget/rounded_search_field.dart';
 import '../widget/animated_Dots_LoadingText.dart';
 import '../widget/custom_app_bar.dart';
+import '../widget/cache_status_indicator.dart';
 import 'dart:developer'; // Import for the log function
 
 class StockScreen extends StatefulWidget {
@@ -54,6 +55,7 @@ class _StockScreenState extends State<StockScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
             child: _buildSortOptions(context),
           ),
+          const CacheStatusIndicator(),
           const SizedBox(height: 10),
           Expanded( // Expanded takes the remaining vertical space
             child: Obx(() {

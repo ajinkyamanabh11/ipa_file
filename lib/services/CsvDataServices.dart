@@ -50,6 +50,11 @@ class CsvDataService extends GetxController {
   final RxDouble memoryUsageMB = 0.0.obs;
   final RxBool isMemoryWarning = false.obs;
 
+  // Cache status tracking
+  final RxBool isDataFromCache = false.obs;
+  final RxString lastDataSource = 'Unknown'.obs; // 'Cache', 'Network', 'Unknown'
+  final RxnDateTime lastCacheTime = RxnDateTime();
+
   @override
   void onInit() {
     super.onInit();
@@ -163,6 +168,9 @@ class CsvDataService extends GetxController {
 
         if (!needsDownload) {
           log('✅ CsvDataService: Loading CSVs from cache.');
+          isDataFromCache.value = true;
+          lastDataSource.value = 'Cache';
+          lastCacheTime.value = DateTime.fromMillisecondsSinceEpoch(lastSync!);
           for (final config in csvConfigs) {
             final cached = _box.read(config['key']);
             if (cached != null && cached.isNotEmpty) {
@@ -180,6 +188,9 @@ class CsvDataService extends GetxController {
         final folderId = await drive.folderId(path);
         await _downloadCsvsWithMemoryManagement(csvConfigs, folderId);
         await _box.write(_lastCsvSyncTimestampKey, DateTime.now().millisecondsSinceEpoch);
+        isDataFromCache.value = false;
+        lastDataSource.value = 'Network';
+        lastCacheTime.value = DateTime.now();
         log('📦 CsvDataService: All CSVs downloaded and cached.');
       } catch (e, st) {
         log('❌ CsvDataService: Error in _loadCsvsInternal: $e\n$st');
