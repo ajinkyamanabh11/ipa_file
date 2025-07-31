@@ -29,8 +29,8 @@ class CsvDataService extends GetxController {
 
   static const String _lastCsvSyncTimestampKey = 'lastCsvSync';
 
-  // Adjusted cache duration for testing, consider making it longer in production
-  static const Duration _cacheDuration = Duration(minutes: 1); // Shorter cache for easier testing
+  // Cache duration for production - data stays cached for 30 minutes
+  static const Duration _cacheDuration = Duration(minutes: 30); // Cache data for 30 minutes
 
   // Memory management constants
   static const int _maxMemoryUsageMB = 100; // Maximum memory usage in MB
@@ -346,5 +346,38 @@ class CsvDataService extends GetxController {
 
     memoryUsageMB.value = totalSize;
     return totalSize;
+  }
+
+  /// Get the last sync timestamp
+  DateTime? getLastSyncTime() {
+    final lastSync = _box.read<int?>(_lastCsvSyncTimestampKey);
+    return lastSync != null ? DateTime.fromMillisecondsSinceEpoch(lastSync) : null;
+  }
+
+  /// Check if cache is valid (not expired)
+  bool isCacheValid() {
+    final lastSync = _box.read<int?>(_lastCsvSyncTimestampKey);
+    if (lastSync == null) return false;
+    
+    return DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastSync)) < _cacheDuration;
+  }
+
+  /// Get cache status as a readable string
+  String getCacheStatus() {
+    final lastSync = getLastSyncTime();
+    if (lastSync == null) return 'No data cached';
+    
+    final now = DateTime.now();
+    final difference = now.difference(lastSync);
+    
+    if (difference.inMinutes < 1) {
+      return 'Updated just now';
+    } else if (difference.inMinutes < 60) {
+      return 'Updated ${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return 'Updated ${difference.inHours}h ago';
+    } else {
+      return 'Updated ${difference.inDays}d ago';
+    }
   }
 }
