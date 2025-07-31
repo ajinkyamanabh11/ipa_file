@@ -27,11 +27,11 @@ class InitialBindings {
     // Initialize GetStorage before any controller that uses it
     await GetStorage.init(); // IMPORTANT: Initialize GetStorage here
 
-    // 🔴 NEW: Memory Monitor (initialize first for early monitoring)
-    Get.put<MemoryMonitor>(MemoryMonitor(), permanent: true);
+    // 🔴 NEW: Memory Monitor (lazy load for better startup performance)
+    Get.lazyPut<MemoryMonitor>(() => MemoryMonitor(), fenix: true);
 
-    // 🔴 NEW: Background Processor (initialize early for heavy operations)
-    Get.put<BackgroundProcessor>(BackgroundProcessor(), permanent: true);
+    // 🔴 NEW: Background Processor (lazy load for better startup performance)
+    Get.lazyPut<BackgroundProcessor>(() => BackgroundProcessor(), fenix: true);
 
     // 1️⃣ Google Sign‑in controller (never disposed)
     Get.put<GoogleSignInController>(GoogleSignInController(), permanent: true);
@@ -42,16 +42,16 @@ class InitialBindings {
       permanent: true,
     );
 
-    // 🔴 NEW: Centralized CSV Data Service
-    Get.put<CsvDataService>(CsvDataService(), permanent: true);
+    // 🔴 NEW: Centralized CSV Data Service - made lazy for better startup performance
+    Get.lazyPut<CsvDataService>(() => CsvDataService(), fenix: true);
 
     // 🔴 NEW: Theme Controller (permanent singleton)
     Get.put<ThemeController>(ThemeController(), permanent: true); // ADD THIS
 
-    // 3️⃣ Core app‑wide controllers
-    Get.put<CustomerLedgerController>(
-      CustomerLedgerController(),
-      permanent: true,
+    // 3️⃣ Core app‑wide controllers - made lazy for better startup performance
+    Get.lazyPut<CustomerLedgerController>(
+      () => CustomerLedgerController(),
+      fenix: true,
     );
 
     // Item / stock logic can be recreated when needed (fenix)

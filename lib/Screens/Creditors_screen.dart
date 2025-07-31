@@ -26,6 +26,11 @@ class _CreditorsScreen extends State<CreditorsScreen> {
   void initState() {
     super.initState();
     listCtrl.addListener(() => showFab.value = listCtrl.offset > 300);
+    
+    // Ensure data is loaded when screen is accessed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ctrl.ensureDataLoaded();
+    });
   }
 
   @override
@@ -116,7 +121,19 @@ class _CreditorsScreen extends State<CreditorsScreen> {
             child: Obx(() {
               // 1️⃣ full‑screen loader only on FIRST load
               if (ctrl.isLoading.value && ctrl.creditors.isEmpty) {
-                return Center(child: DotsWaveLoadingText(color: onSurfaceColor)); // Use theme-aware color
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      DotsWaveLoadingText(color: onSurfaceColor),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Loading creditors data...',
+                        style: TextStyle(color: onSurfaceColor.withOpacity(0.7)),
+                      ),
+                    ],
+                  ),
+                );
               }
 
               // 2️⃣ show error, but leave search & chips in place
@@ -154,7 +171,7 @@ class _CreditorsScreen extends State<CreditorsScreen> {
 
               // 5️⃣ list with pull‑to‑refresh
               return RefreshIndicator(
-                onRefresh: () => ctrl.refreshDebtors(),   // ← single call
+                onRefresh: () => ctrl.refreshCreditors(),   // ← fixed to use creditors refresh
                 color: primaryColor, // Use theme primary color for refresh indicator
                 child: ListView.builder(
                   controller: listCtrl,

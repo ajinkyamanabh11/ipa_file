@@ -26,6 +26,11 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
   void initState() {
     super.initState();
     listCtrl.addListener(() => showFab.value = listCtrl.offset > 300);
+    
+    // Ensure data is loaded when screen is accessed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ctrl.ensureDataLoaded();
+    });
   }
 
   @override
@@ -116,7 +121,19 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
             child: Obx(() {
               // 1️⃣ full‑screen loader only on FIRST load
               if (ctrl.isLoading.value && ctrl.debtors.isEmpty) {
-                return Center(child: DotsWaveLoadingText(color: onSurfaceColor)); // Use theme-aware color
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      DotsWaveLoadingText(color: onSurfaceColor),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Loading debtors data...',
+                        style: TextStyle(color: onSurfaceColor.withOpacity(0.7)),
+                      ),
+                    ],
+                  ),
+                );
               }
 
               // 2️⃣ show error, but leave search & chips in place
