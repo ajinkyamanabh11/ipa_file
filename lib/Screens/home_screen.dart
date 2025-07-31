@@ -12,8 +12,7 @@ import '../routes/routes.dart'; // ⬅ route constants
 // Import the ThemeController
 import '../controllers/theme_controller.dart';
 
-// Import the NEW TodayProfitController
-import '../controllers/today_profit_controller.dart';
+
 
 // other feature screens that still open by widget (if any) can stay imported
 
@@ -234,7 +233,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final controller = Get.find<GoogleSignInController>();
-    final todayProfitController = Get.put(TodayProfitController());
     final themeController = Get.find<ThemeController>();
 
     return Scaffold(
@@ -424,95 +422,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 ),
                               ),
                             ],
-                          ),
-                        ),
-                      ),
-                      // Todays Profit Card
-                      Padding( // Use Padding instead of Positioned now that it's in a Column
-                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0), // Adjust top padding
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(15),
-                            boxShadow: [
-                              BoxShadow(
-                                // Box shadow color can be theme-dependent, but black54 is often good for both.
-                                color: Colors.black54,
-                                spreadRadius: 1,
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                            // NEW: Use DecorationImage for the background
-                            image: const DecorationImage(
-                              image: AssetImage('assets/appbarimg.png'),
-                              fit: BoxFit.cover, // Ensures the image covers the card area
-                              // You might want to adjust colorFilter for better text readability
-                              // colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.4), BlendMode.darken),
-                            ),
-                          ),
-                          child: Card(
-                            color: Colors.transparent, // Keep transparent to show Container's image
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                            child: Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      const Text(
-                                        "Today's Profit",
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white, // Keep text white for contrast on image
-                                        ),
-                                      ),
-                                      Row( // Wrap icon and button in another Row for alignment
-                                        children: [
-                                          IconButton( // NEW: Refresh button
-                                            icon: const Icon(Icons.refresh, color: Colors.white), // Keep white for contrast
-                                            onPressed: () {
-                                              // Call loadTodayProfit from the new controller
-                                              todayProfitController.loadTodayProfit();
-                                            },
-                                            tooltip: "Refresh Today's Profit",
-                                          ),
-                                          Icon(Icons.trending_up, color: Colors.white.withOpacity(0.8), size: 30), // Keep white for contrast
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-
-                                  Obx(() {
-                                    if (todayProfitController.isLoadingTodayProfit.value) { // Use new controller's loading state
-                                      return LinearProgressIndicator(
-                                        color: Theme.of(context).colorScheme.onPrimary, // Use theme color
-                                        backgroundColor: Theme.of(context).primaryColor, // Use theme color
-                                      );
-                                    }
-                                    return Text(
-                                      '₹ ${todayProfitController.todayTotalProfit.value.toStringAsFixed(2)}', // Use new controller's profit
-                                      style: const TextStyle(
-                                        fontSize: 32,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white, // Keep white for contrast on image
-                                      ),
-                                    );
-                                  }),
-
-                                  Text(
-                                    'As of ${DateFormat('dd-MM-yyyy').format(DateTime.now())}',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.white.withOpacity(0.8), // Keep white for contrast on image
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
                           ),
                         ),
                       ),

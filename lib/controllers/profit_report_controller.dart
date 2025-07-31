@@ -108,7 +108,8 @@ class ProfitReportController extends GetxController {
     log('📈 ProfitReportController: Starting load for dates: $startDate to $endDate (Force Refresh parameter received: $forceRefresh)');
 
     try {
-      await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
+      // Only force download if explicitly requested via refresh
+    await _csvDataService.loadAllCsvs(forceDownload: forceRefresh);
       log('📈 ProfitReportController: CsvDataService.loadAllCsvs completed. Force download was: $forceRefresh');
 
       // Check dataset size and determine processing method

@@ -212,7 +212,7 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
         headingRowColor: MaterialStateProperty.all(Theme.of(context).colorScheme.surfaceVariant),
         columnSpacing: 24,
         rowsPerPage: rowsPer,
-        availableRowsPerPage: sortedRows.length < 10 && sortedRows.isNotEmpty ? [rowsPer] : const [10, 25, 50], // Provide more options if data grows
+        availableRowsPerPage: sortedRows.length < 10 && sortedRows.isNotEmpty ? [rowsPer] : [10, 25, 50, 100, sortedRows.length], // Show all data option
         showFirstLastButtons: true,
         columns: [
           DataColumn(label: Text('Sr.', style: Theme.of(context).textTheme.titleSmall)),
