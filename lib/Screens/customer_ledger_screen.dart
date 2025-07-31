@@ -17,7 +17,7 @@ class CustomerLedger_Screen extends StatefulWidget {
 }
 
 class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
-  final ctrl = Get.put(CustomerLedgerController());
+  final ctrl = Get.find<CustomerLedgerController>();
 
   final searchCtrl = TextEditingController();
   final scrollCtrl = ScrollController();
@@ -37,6 +37,10 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
     // toggle FAB
     scrollCtrl.addListener(() {
       showFab.value = scrollCtrl.offset > 300;
+    });
+    // Ensure data is loaded when screen is accessed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ctrl.ensureDataLoaded();
     });
   }
 

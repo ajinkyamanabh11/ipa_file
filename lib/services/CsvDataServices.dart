@@ -12,7 +12,7 @@ import '../util/csv_worker.dart'; // your new isolate parser
 
 class CsvDataService extends GetxController {
   final GoogleDriveService drive = Get.find<GoogleDriveService>();
-  final BackgroundProcessor _backgroundProcessor = Get.find<BackgroundProcessor>();
+  late final BackgroundProcessor _backgroundProcessor;
   final GetStorage _box = GetStorage();
   Future<void>? _loadingFuture;
   bool _hasDownloadedOnce = false;
@@ -29,8 +29,8 @@ class CsvDataService extends GetxController {
 
   static const String _lastCsvSyncTimestampKey = 'lastCsvSync';
 
-  // Adjusted cache duration for testing, consider making it longer in production
-  static const Duration _cacheDuration = Duration(minutes: 1); // Shorter cache for easier testing
+  // Optimized cache duration for better performance - cache for 30 minutes
+  static const Duration _cacheDuration = Duration(minutes: 30); //  Longer cache for better performance
 
   // Memory management constants
   static const int _maxMemoryUsageMB = 100; // Maximum memory usage in MB
@@ -53,6 +53,8 @@ class CsvDataService extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    // Initialize background processor lazily
+    _backgroundProcessor = Get.find<BackgroundProcessor>();
     _startMemoryMonitoring();
     // Don't automatically load CSVs on init - load on-demand only
   }
