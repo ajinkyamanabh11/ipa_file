@@ -17,7 +17,7 @@ import 'google_signin_controller.dart';
 class CustomerLedgerController extends GetxController {
   final GoogleDriveService drive = Get.find<GoogleDriveService>();
   final GoogleSignInController _googleSignInController = Get.find<GoogleSignInController>();
-  final CsvDataService _csvDataService = Get.find<CsvDataService>(); // NEW: Get CsvDataService instance
+  late final CsvDataService _csvDataService; // NEW: Get CsvDataService instance lazily
 
   // ───────────── reactive stores ─────────────
   final accounts = <AccountModel>[].obs;
@@ -46,6 +46,9 @@ class CustomerLedgerController extends GetxController {
   @override
   Future<void> onInit() async {
     super.onInit();
+    
+    // Initialize CSV data service lazily
+    _csvDataService = Get.find<CsvDataService>();
     // Listen to sign-in status changes
     _googleSignInController.user.listen((account) {
       if (account != null) {
@@ -69,10 +72,10 @@ class CustomerLedgerController extends GetxController {
     });
 
     // Initial load attempt based on current sign-in status
-    // Now just trigger a load, CsvDataService will handle initial download/cache logic
+    // Don't load data immediately to improve startup performance
     if (_googleSignInController.isSignedIn) {
-      log('👤 CustomerLedgerController: Already signed in on init. Loading data...');
-      _load();
+      log('👤 CustomerLedgerController: Already signed in on init. Data will be loaded on demand.');
+      requiresSignIn(false);
     } else {
       log('👤 CustomerLedgerController: Not signed in on init. Awaiting sign-in.');
       requiresSignIn(true);
@@ -82,6 +85,19 @@ class CustomerLedgerController extends GetxController {
 
   // refreshDebtors will now force a refresh of the underlying CSVs
   Future<void> refreshDebtors() async => _load(silent: true, forceRefreshCsv: true);
+  
+  // Add method for refreshing creditors specifically
+  Future<void> refreshCreditors() async => _load(silent: true, forceRefreshCsv: true);
+  
+  // Add method to ensure data is loaded when screens are accessed
+  Future<void> ensureDataLoaded() async {
+    // If we have no data at all, trigger a load
+    if (accounts.isEmpty && transactions.isEmpty && 
+        customerInfo.isEmpty && supplierInfo.isEmpty) {
+      await _load();
+    }
+  }
+  
   Future<void> loadData() => _load();
 
   // ───────────── loader ─────────────
