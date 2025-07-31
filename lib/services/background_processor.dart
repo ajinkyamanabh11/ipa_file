@@ -3,7 +3,11 @@ import 'dart:async';
 import 'dart:isolate';
 import 'package:get/get.dart';
 import 'package:flutter/foundation.dart';
+import '../model/account_master_model.dart';
+import '../model/allaccounts_model.dart';
+import '../util/csv_utils.dart';
 import '../util/csv_worker.dart';
+
 
 /// Service for handling heavy background processing tasks
 class BackgroundProcessor extends GetxService {
@@ -127,12 +131,15 @@ class BackgroundProcessor extends GetxService {
   }
 
   /// Execute a background task
+  // In background_processor.dart
+
   Future<dynamic> _executeTask(BackgroundTask task) async {
     switch (task.operation) {
       case 'csv_parse':
         return await _executeCsvParseTask(task);
-      case 'dataset_process':
-        return await _executeDatasetProcessTask(task);
+      case 'process_ledger': // NEW CASE
+        return await compute(_processLedgerDataOnIsolate, task.data);
+    // ... other cases
       default:
         throw Exception('Unknown task operation: ${task.operation}');
     }
@@ -197,6 +204,116 @@ class BackgroundProcessor extends GetxService {
     }
 
     return results;
+  }
+  // This function will run on an Isolate.
+// It combines parsing and efficient lookups.
+  String _pickPhone(Map<String, dynamic>? row) {
+    if (row == null) return '-';
+    const keys = [
+      'mobile', 'mobileno', 'mobile no',
+      'phone',  'phoneno',  'phone no',
+      'mobile_number', 'phone_number'
+    ];
+    for (final k in keys) {
+      final v = row[k];
+      if (v != null && v.toString().trim().isNotEmpty) return v.toString();
+    }
+    return '-';
+  }
+
+  /// Helper function to find the first non-empty address from a row
+  String _pickAddress(Map<String,dynamic>? row) {
+    if (row == null) return '';
+    const keys = [
+      'area', 'address1', 'address'
+    ];
+    for (final k in keys) {
+      final v = row[k];
+      if (v != null && v.toString().trim().isNotEmpty) return v.toString();
+    }
+    return '';
+  }
+
+  /// This function will run on an Isolate.
+  /// It combines parsing and efficient lookups.
+  Map<String, dynamic> _processLedgerDataOnIsolate(Map<String, dynamic> data) {
+    // We need to import the model classes and csv_utils inside this function,
+    // or at the top of the file, so they are available in the Isolate.
+    // Assuming 'csv_utils.dart' and your model files are imported at the top of background_processor.dart.
+    // import '../util/csv_utils.dart';
+    // import '../model/account_master_model.dart';
+    // import '../model/allaccounts_model.dart';
+
+    // 1. Efficiently parse all CSV data in this isolate
+    allLc(Map<String, dynamic> row) => {
+    for (final e in row.entries)
+    e.key.toString().trim().toLowerCase(): e.value
+    };
+
+    final accounts = CsvUtils.toMaps(data['accountsCsv'] as String).map(allLc).map(AccountModel.fromMap).toList();
+    final transactions = CsvUtils.toMaps(data['transactionsCsv'] as String).map(allLc).map(AllAccountsModel.fromMap).toList();
+    final customerInfo = CsvUtils.toMaps(data['customerInfoCsv'] as String).map(allLc).toList();
+    final supplierInfo = CsvUtils.toMaps(data['supplierInfoCsv'] as String).map(allLc).toList();
+
+    // 2. Build an optimized lookup map for transactions
+    final transactionMap = <int, List<AllAccountsModel>>{};
+    for (final t in transactions) {
+    if (!transactionMap.containsKey(t.accountCode)) {
+    transactionMap[t.accountCode] = [];
+    }
+    transactionMap[t.accountCode]!.add(t);
+    }
+
+    // 3. Build a lookup map for customer and supplier info
+    final custMap = { for (final r in customerInfo) int.tryParse(r['accountnumber']?.toString() ?? '0') ?? 0: r };
+    final supMap = { for (final r in supplierInfo) int.tryParse(r['accountnumber']?.toString() ?? '0') ?? 0: r };
+
+    // 4. Calculate balances with fast O(1) lookups
+    final allDebtors = <Map<String, dynamic>>[];
+    final allCreditors = <Map<String, dynamic>>[];
+
+    for (final acc in accounts) {
+    final isCust = acc.type.toLowerCase() == 'customer';
+    final isSupp = acc.type.toLowerCase() == 'supplier';
+    if (!isCust && !isSupp) continue;
+
+    final accountTransactions = transactionMap[acc.accountNumber] ?? [];
+    if (accountTransactions.isEmpty) continue;
+
+    final bal = accountTransactions.fold<double>(0, (p, t) => p + (t.isDr ? t.amount : -t.amount));
+
+    if (bal == 0) continue;
+
+    final infoRow = isCust ? custMap[acc.accountNumber] : supMap[acc.accountNumber];
+
+    final row = {
+    'accountNumber': acc.accountNumber,
+    'name': acc.accountName,
+    'type': acc.type,
+    'closingBalance': bal.abs(),
+    'area': _pickAddress(infoRow), // <-- Now calls the top-level helper
+    'mobile': _pickPhone(infoRow), // <-- Now calls the top-level helper
+    'drCr': bal > 0 ? 'Dr' : 'Cr',
+    };
+
+    if (bal > 0) {
+    allDebtors.add(row);
+    } else {
+    allCreditors.add(row);
+    }
+    }
+
+    allDebtors.sort((a, b) => a['name'].toString().compareTo(b['name'].toString()));
+    allCreditors.sort((a, b) => a['name'].toString().compareTo(b['name'].toString()));
+
+    return {
+    'accounts': accounts,
+    'transactions': transactions,
+    'customerInfo': customerInfo,
+    'supplierInfo': supplierInfo,
+    'allDebtors': allDebtors,
+    'allCreditors': allCreditors,
+    };
   }
 
   /// Get current memory usage estimate

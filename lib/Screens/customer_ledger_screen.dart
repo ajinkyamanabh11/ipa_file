@@ -17,7 +17,7 @@ class CustomerLedger_Screen extends StatefulWidget {
 }
 
 class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
-  final ctrl = Get.find<CustomerLedgerController>();
+  final ctrl = Get.put(CustomerLedgerController());
 
   final searchCtrl = TextEditingController();
   final scrollCtrl = ScrollController();
@@ -37,10 +37,6 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
     // toggle FAB
     scrollCtrl.addListener(() {
       showFab.value = scrollCtrl.offset > 300;
-    });
-    // Ensure data is loaded when screen is accessed
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ctrl.ensureDataLoaded();
     });
   }
 
@@ -80,6 +76,16 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
         body: Obx(() {
           if (ctrl.isLoading.value) {
             return Center(child: DotsWaveLoadingText(color: onSurfaceColor));
+          }
+
+          if (ctrl.isProcessingData.value) {
+            return Center(
+              child: ProgressLoadingWidget(
+                progress: ctrl.dataProcessingProgress.value,
+                message: 'Processing customer data...',
+                color: primaryColor,
+              ),
+            );
           }
 
           final names =
