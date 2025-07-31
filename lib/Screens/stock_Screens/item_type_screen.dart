@@ -4,6 +4,7 @@ import '../../controllers/item_type_controller.dart';
 import '../../main.dart'; // Ensure this is correctly imported for routeObserver
 import '../../widget/animated_Dots_LoadingText.dart';
 import '../../widget/custom_app_bar.dart';
+import '../../widget/cache_status_indicator.dart';
 import '../../widget/refresh_indicator.dart'; // Assuming AppRefreshIndicator is here
 import '../../widget/rounded_search_field.dart'; // Assuming RoundedSearchField is here
 
@@ -83,6 +84,7 @@ class _ItemTypeScreenState extends State<ItemTypeScreen> with RouteAware {
               },
             ),
           ),
+          const CacheStatusIndicator(),
 
           Expanded(
             child: Obx(() {

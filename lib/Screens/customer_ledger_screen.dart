@@ -8,6 +8,7 @@ import '../controllers/customerLedger_Controller.dart';
 import '../model/allaccounts_model.dart';
 import '../widget/animated_Dots_LoadingText.dart';
 import '../widget/custom_app_bar.dart';
+import '../widget/cache_status_indicator.dart';
 
 class CustomerLedger_Screen extends StatefulWidget {
   const CustomerLedger_Screen({super.key});
@@ -92,6 +93,7 @@ class _CustomerLedger_ScreenState extends State<CustomerLedger_Screen> {
                   children: [
                     const SizedBox(height: 12),
                     _autocomplete(names, context), // Pass context
+                    const CacheStatusIndicator(),
                     Expanded(
                       child: SingleChildScrollView(
                         controller: scrollCtrl,

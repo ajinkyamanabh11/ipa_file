@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../controllers/profit_report_controller.dart';
 import '../widget/animated_Dots_LoadingText.dart';
 import '../widget/custom_app_bar.dart';
+import '../widget/cache_status_indicator.dart';
 import 'package:fl_chart/fl_chart.dart'; // Import fl_chart
 import 'dart:math'; // For random colors
 
@@ -58,6 +59,7 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: _buildSearchField(),
           ),
+          const CacheStatusIndicator(),
           const SizedBox(height: 10),
           Expanded(
             child: Obx(() {

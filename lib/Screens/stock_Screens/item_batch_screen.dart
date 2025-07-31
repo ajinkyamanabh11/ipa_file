@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../controllers/item_type_controller.dart';
 import '../../widget/custom_app_bar.dart';
+import '../../widget/cache_status_indicator.dart';
 
 class ItemBatchScreen extends StatelessWidget {
   final String itemname;
@@ -116,19 +117,23 @@ class ItemBatchScreen extends StatelessWidget {
       appBar: CustomAppBar(
         title: Text('Batches for ItemCode $itemCode'),
       ),
-      body: Obx(() {
-        final batches = controller.itemDetailsByCode[itemCode] ?? [];
+      body: Column(
+        children: [
+          const CacheStatusIndicator(),
+          Expanded(
+            child: Obx(() {
+              final batches = controller.itemDetailsByCode[itemCode] ?? [];
 
-        if (batches.isEmpty) {
-          return Center(
-            child: Text(
-              'No batches found.',
-              style: TextStyle(color: onSurfaceColor), // Theme-aware text color
-            ),
-          );
-        }
+              if (batches.isEmpty) {
+                return Center(
+                  child: Text(
+                    'No batches found.',
+                    style: TextStyle(color: onSurfaceColor), // Theme-aware text color
+                  ),
+                );
+              }
 
-        return ListView.builder(
+              return ListView.builder(
           itemCount: batches.length,
           itemBuilder: (_, index) {
             final d = batches[index];
@@ -254,6 +259,9 @@ class ItemBatchScreen extends StatelessWidget {
           },
         );
       }),
+    ),
+        ],
+      ),
     );
   }
 }

@@ -5,6 +5,7 @@ import '../../controllers/item_type_controller.dart';
 import '../../main.dart'; // routeObserver
 import '../../routes/routes.dart';
 import '../../widget/custom_app_bar.dart';
+import '../../widget/cache_status_indicator.dart';
 import '../../widget/rounded_search_field.dart';
 import 'item_batch_screen.dart';
 
@@ -132,6 +133,7 @@ class _ItemListScreenState extends State<ItemListScreen> with RouteAware {
               },
             ),
           ),
+          const CacheStatusIndicator(),
           Expanded(
             child: RefreshIndicator(
               // Use theme's primary color for refresh indicator

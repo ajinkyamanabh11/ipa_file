@@ -8,6 +8,7 @@ import '../controllers/sales_controller.dart'; // Ensure SalesController is upda
 
 import '../widget/animated_Dots_LoadingText.dart';
 import '../widget/custom_app_bar.dart';
+import '../widget/cache_status_indicator.dart';
 
 class SalesScreen extends StatefulWidget {
   const SalesScreen({super.key});
@@ -159,6 +160,7 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
                       padding: const EdgeInsets.only(bottom: 100),
                       children: [
                         _filters(context),
+                        const CacheStatusIndicator(),
                         const SizedBox(height: 8),
                         Row(
                           children: [
