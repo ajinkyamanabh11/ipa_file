@@ -12,8 +12,7 @@ import '../routes/routes.dart'; // ⬅ route constants
 // Import the ThemeController
 import '../controllers/theme_controller.dart';
 
-// Import the NEW TodayProfitController (still needed if other parts use it, but not for the card now)
-import '../controllers/today_profit_controller.dart';
+
 
 // other feature screens that still open by widget (if any) can stay imported
 
@@ -234,7 +233,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final controller = Get.find<GoogleSignInController>();
-    // final todayProfitController = Get.put(TodayProfitController()); // No longer directly used for the card
     final themeController = Get.find<ThemeController>();
 
     return Scaffold(
@@ -253,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     child: DrawerHeader(
                       decoration: const BoxDecoration(
                         image: DecorationImage(
-                          image: AssetImage('assets/appbarimg.png'),
+                          image: AssetImage("assets/appbarimg.png"),
                           fit: BoxFit.cover,
                         ),
                       ),
@@ -277,10 +275,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               );
                             }
                           }),
-                          const SizedBox(width: 16),
+                          SizedBox(width: 16),
                           Obx(() {
                             final user = googleSignInController.user.value;
-                            String displayText = "Softagri Menu";
+                            String displayText = "Kisan Krushi Menu";
 
                             if (user != null) {
                               final userName = user.displayName ?? user.email;
@@ -294,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             return Expanded(
                               child: Text(
                                 displayText,
-                                style: const TextStyle(fontSize: 20, color: Colors.white),
+                                style: TextStyle(fontSize: 20, color: Colors.white),
                               ),
                             );
                           }),
@@ -374,7 +372,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
-            // Animated content: top bar and grid (Today's Profit Card removed)
+            // Animated content: top bar, profit card, and grid
             Positioned.fill( // Allows the content to fill the available space
               child: FadeTransition( // Overall fade-in for the content
                 opacity: _fadeAnimation,
@@ -418,17 +416,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                           style: TextStyle(color: Colors.white, fontSize: 14), // Keep white for contrast on image
                                           textAlign: TextAlign.end,
                                         ),
+
                                       ],
                                     );
                                   },
                                 ),
+
                               ),
                             ],
                           ),
                         ),
-                      ),
-                      SizedBox(height: 150),
 
+                      ),
+                      SizedBox(height:150),
                       // Grid Dashboard: Now using GridView.builder for staggered animation
                       Expanded( // Takes remaining vertical space in the Column
                         child: GridView.builder(

@@ -17,12 +17,13 @@ import '../services/background_processor.dart';
 import '../util/memory_monitor.dart'; // NEW IMPORT
 
 class InitialBindings {
-  static bool _done = false;
+  static bool _coreDone = false;
+  static bool _secondaryDone = false;
 
-  /// Call once from main.dart to register every global singleton.
-  static Future<void> ensure() async {
-    if (_done) return;
-    _done = true;
+  /// Initialize only core services required for app startup
+  static Future<void> ensureCore() async {
+    if (_coreDone) return;
+    _coreDone = true;
 
     // Initialize GetStorage before any controller that uses it
     await GetStorage.init(); // IMPORTANT: Initialize GetStorage here
@@ -42,11 +43,20 @@ class InitialBindings {
       permanent: true,
     );
 
-    // 🔴 NEW: Centralized CSV Data Service
-    Get.put<CsvDataService>(CsvDataService(), permanent: true);
-
     // 🔴 NEW: Theme Controller (permanent singleton)
     Get.put<ThemeController>(ThemeController(), permanent: true); // ADD THIS
+  }
+
+  /// Initialize secondary services that can be loaded after app startup
+  static Future<void> ensureSecondary() async {
+    if (_secondaryDone) return;
+    _secondaryDone = true;
+
+    // Ensure core services are loaded first
+    await ensureCore();
+
+    // 🔴 NEW: Centralized CSV Data Service (load after core services)
+    Get.put<CsvDataService>(CsvDataService(), permanent: true);
 
     // 3️⃣ Core app‑wide controllers
     Get.put<CustomerLedgerController>(
@@ -66,5 +76,11 @@ class InitialBindings {
 
     Get.lazyPut<StockReportController>(() => StockReportController(), fenix: true);
     Get.lazyPut<SalesController>(() => SalesController(), fenix: true);
+  }
+
+  /// Legacy method for backward compatibility
+  static Future<void> ensure() async {
+    await ensureCore();
+    await ensureSecondary();
   }
 }
