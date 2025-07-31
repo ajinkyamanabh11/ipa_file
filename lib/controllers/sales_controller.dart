@@ -95,8 +95,8 @@ class SalesController extends GetxController with BaseRemoteController {
   Future<void> onInit() async {
     super.onInit();
     log('[SalesController] Initializing and loading sales data...');
-    // Guard ensures that the async operation is handled safely (e.g., preventing multiple calls).
-    guard(() => _loadSales(forceRefresh: true));
+   // Load from cache first, only download if cache is empty or expired
+    guard(() => _loadSales(forceRefresh: false));
   }
 
   /// Public method to trigger fetching sales data, with an option to force a fresh download.

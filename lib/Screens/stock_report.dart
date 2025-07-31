@@ -57,7 +57,21 @@ class _StockScreenState extends State<StockScreen> {
     final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
-      appBar: const CustomAppBar(title: Text('Stock Report')),
+      appBar: CustomAppBar(
+        title: const Text('Stock Report'),
+        actions: [
+          Obx(() => IconButton(
+            icon: Icon(
+              Icons.refresh,
+              color: stockReportController.isLoading.value ? onSurfaceColor.withOpacity(0.5) : Theme.of(context).primaryColor,
+            ),
+            tooltip: 'Refresh Data',
+            onPressed: stockReportController.isLoading.value ? null : () {
+              stockReportController.loadStockReport(forceRefresh: true);
+            },
+          )),
+        ],
+      ),
 
       body: Column(
         children: [
@@ -120,7 +134,7 @@ class _StockScreenState extends State<StockScreen> {
 
                         ElevatedButton(
                           onPressed: () => stockReportController
-                              .loadStockReport(forceRefresh: true),
+                              .loadStockReport(forceRefresh: false),
 
                           child: const Text('Retry'),
                         ),

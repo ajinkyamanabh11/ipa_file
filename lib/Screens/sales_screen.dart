@@ -1,10 +1,9 @@
-
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 import '../controllers/sales_controller.dart'; // Ensure SalesController is updated with SalesEntry model
+import '../services/CsvDataServices.dart';
 
 import '../widget/animated_Dots_LoadingText.dart';
 import '../widget/custom_app_bar.dart';
@@ -19,6 +18,7 @@ class SalesScreen extends StatefulWidget {
 class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStateMixin {
   // ─── controllers & state ──────────────────────────────────────
   final sc = Get.find<SalesController>();
+  final csvDataService = Get.find<CsvDataService>();
   final nameCtrl = TextEditingController();
   final billCtrl = TextEditingController();
 
@@ -112,14 +112,29 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
     final Color errorColor = Theme.of(context).colorScheme.error;
 
     return Scaffold(
-      appBar: const CustomAppBar(title: Text('Sales Report')),
+      appBar: CustomAppBar(
+        title: const Text('Sales Report'),
+        actions: [
+          Obx(() => IconButton(
+            icon: Icon(
+              Icons.refresh,
+              color: sc.isLoading.value ? onSurfaceColor.withOpacity(0.5) : primaryColor,
+            ),
+            tooltip: 'Refresh Data',
+            onPressed: sc.isLoading.value ? null : () async {
+              _animationController?.reset();
+              await sc.fetchSales(forceRefresh: true);
+            },
+          )),
+        ],
+      ),
       body: Stack(
         children: [
           RefreshIndicator(
             color: primaryColor,
             onRefresh: () async {
               _animationController?.reset();
-              await sc.fetchSales();
+              await sc.fetchSales(forceRefresh: true); // Load from cache, don't force download
             },
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -159,6 +174,8 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
                       padding: const EdgeInsets.only(bottom: 100),
                       children: [
                         _filters(context),
+                        const SizedBox(height: 8),
+                        _cacheStatusIndicator(context),
                         const SizedBox(height: 8),
                         Row(
                           children: [
@@ -518,6 +535,57 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
           ],
         );
       },
+    );
+  }
+
+  // ─── Cache Status Indicator ──────────────────────────────────
+  Widget _cacheStatusIndicator(BuildContext ctx) {
+    final Color surfaceVariantColor = Theme.of(ctx).colorScheme.surfaceVariant;
+    final Color onSurfaceColor = Theme.of(ctx).colorScheme.onSurface;
+    final Color primaryColor = Theme.of(ctx).primaryColor;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: surfaceVariantColor.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(ctx).colorScheme.outline.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.access_time,
+            size: 16,
+            color: onSurfaceColor.withOpacity(0.7),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              csvDataService.getCacheStatus(),
+              style: TextStyle(
+                fontSize: 12,
+                color: onSurfaceColor.withOpacity(0.8),
+              ),
+            ),
+          ),
+          if (!csvDataService.isCacheValid())
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Expired',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: primaryColor,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
