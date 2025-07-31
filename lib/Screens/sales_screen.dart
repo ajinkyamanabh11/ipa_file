@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-
+import '../widget/cache_status_indicator.dart';
 import '../controllers/sales_controller.dart'; // Ensure SalesController is updated with SalesEntry model
 import '../services/CsvDataServices.dart';
 
@@ -174,6 +174,7 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
                       padding: const EdgeInsets.only(bottom: 100),
                       children: [
                         _filters(context),
+                        const CacheStatusIndicator(),
                         const SizedBox(height: 8),
                         _cacheStatusIndicator(context),
                         const SizedBox(height: 8),
@@ -589,6 +590,7 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
     );
   }
 }
+
 
 // ───────────────────── DataTableSource ──────────────────────
 // Modified to accept List<SalesEntry> and the dialog function

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:get/get.dart';
+import '../widget/cache_status_indicator.dart';
 
 import 'package:intl/intl.dart';
 
@@ -63,7 +64,7 @@ class _StockScreenState extends State<StockScreen> {
           Obx(() => IconButton(
             icon: Icon(
               Icons.refresh,
-              color: stockReportController.isLoading.value ? onSurfaceColor.withOpacity(0.5) : Theme.of(context).primaryColor,
+              color: stockReportController.isLoading.value ? onSurfaceColor.withOpacity(0.5) : Colors.white,
             ),
             tooltip: 'Refresh Data',
             onPressed: stockReportController.isLoading.value ? null : () {
@@ -90,7 +91,7 @@ class _StockScreenState extends State<StockScreen> {
 
             child: _buildSortOptions(context),
           ),
-
+          const CacheStatusIndicator(),
           const SizedBox(height: 10),
 
           Expanded(

@@ -14,8 +14,7 @@ void main() {
   testWidgets('App starts and navigates correctly (smoke test)', (WidgetTester tester) async {
     // Build our app and trigger a frame.
     // Choose true or false based on what initial state you want to test.
-    // For a general smoke test, testing the logged-out state (false) is often a good start.
-    await tester.pumpWidget(const MyApp(isLoggedIn: false)); // FIX: Changed null to false
+    // For a general smoke test, testing)); // FIX: Changed null to false
 
     // The original test was for a counter app. Your app is different.
     // You'll need to update these expectations to match your actual app's UI.

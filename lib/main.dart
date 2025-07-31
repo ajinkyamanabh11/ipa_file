@@ -1,12 +1,14 @@
-// main.dart
+
 import 'package:demo/routes/app_page_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/date_symbol_data_local.dart';
 // Import your custom theme definitions
 import 'util/themes.dart';
+import 'util/preference_manager.dart';
 // Import your theme controller
 import 'controllers/theme_controller.dart';
 import 'controllers/google_signin_controller.dart';
@@ -37,27 +39,29 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('en_IN', null);
   await GetStorage.init();
-
-  // Initialize only critical controllers first
   Get.put(ThemeController());
+  await InitialBindings.ensure(); // This will put GoogleSignInController and GoogleDriveService
 
-  // Initialize core services without blocking startup
-  await InitialBindings.ensureCore(); // Only core services initially
+  final signInController = Get.find<GoogleSignInController>(); // Get the already put instance
+  // IMPORTANT: Do NOT await signInSilently here if you want to handle it on the login screen
+  // The silent login is already happening in the onInit of GoogleSignInController
+  // but we don't need to block the UI or make routing decisions based on its *immediate* result here.
 
-  final signInController = Get.find<GoogleSignInController>();
+  // Instead, just check the initial state of the user.
+  // The GoogleSignInController's `user` stream will update when silent sign-in completes.
+  // For the initial route, we assume they're not logged in until proven otherwise by the controller's state.
 
-  // Run the app immediately, defer heavy data loading
-  runApp(MyApp(isLoggedIn: signInController.isSignedIn));
-
-  // Schedule background initialization after app starts
-  Future.delayed(Duration(milliseconds: 500), () {
-    InitialBindings.ensureSecondary(); // Load secondary services in background
-  });
+  final hasSeenWalkthrough = PreferenceManager.hasSeenWalkthrough();
+  runApp(MyApp(
+    isLoggedIn: signInController.isSignedIn,
+    hasSeenWalkthrough: hasSeenWalkthrough,
+  )); // Pass the *initial* state
 }
 
 class MyApp extends StatelessWidget {
   final bool isLoggedIn;
-  const MyApp({super.key, required this.isLoggedIn});
+  final bool hasSeenWalkthrough;
+  const MyApp({super.key, required this.isLoggedIn, required this.hasSeenWalkthrough});
 
   @override
   Widget build(BuildContext context) {
@@ -67,9 +71,11 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: "Kisan Krushi",
       navigatorObservers: [routeObserver],
-      // The initialRoute now correctly points to login if not logged in
-      // or home if the silent login from GoogleSignInController's onInit succeeded.
-      initialRoute: isLoggedIn ? Routes.home : Routes.login,
+      // The initialRoute now correctly points to walkthrough if not logged in and hasn't seen walkthrough,
+      // login if not logged in but has seen walkthrough, or home if logged in.
+      initialRoute: isLoggedIn
+          ? Routes.home
+          : (hasSeenWalkthrough ? Routes.login : Routes.walkthrough),
       getPages: AppPages.routes,
       theme: AppThemes.lightTheme,
       darkTheme: AppThemes.darkTheme,

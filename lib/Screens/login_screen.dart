@@ -165,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                         color: Colors.white,
                         shape: BoxShape.circle,
                       ),
-                      child: Image.asset("assets/applogo.png"),
+                      child: Image.asset("assets/applogo_circle.png"),
                     ),
                   ),
                 ),
