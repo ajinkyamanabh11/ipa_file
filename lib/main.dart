@@ -49,12 +49,11 @@ Future<void> main() async {
   // The GoogleSignInController's `user` stream will update when silent sign-in completes.
   // For the initial route, we assume they're not logged in until proven otherwise by the controller's state.
 
-  runApp(MyApp(isLoggedIn: signInController.isSignedIn)); // Pass the *initial* state
+  runApp(const MyApp()); // No need to pass isLoggedIn anymore, splash screen will handle it
 }
 
 class MyApp extends StatelessWidget {
-  final bool isLoggedIn;
-  const MyApp({super.key, required this.isLoggedIn});
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -64,9 +63,8 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: "Kisan Krushi",
       navigatorObservers: [routeObserver],
-      // The initialRoute now correctly points to login if not logged in
-      // or home if the silent login from GoogleSignInController's onInit succeeded.
-      initialRoute: isLoggedIn ? Routes.home : Routes.login,
+      // Start with splash screen which will handle authentication check and navigation
+      initialRoute: Routes.splash,
       getPages: AppPages.routes,
       theme: AppThemes.lightTheme,
       darkTheme: AppThemes.darkTheme,
