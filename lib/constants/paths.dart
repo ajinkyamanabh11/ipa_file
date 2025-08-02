@@ -1,15 +1,14 @@
-// lib/constants/softagri_path.dart
 import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
 
 class SoftAgriPath {
-  static const String _ROOT = 'SoftAgri_Backups';
+  static const String _ROOT = 'Softagri_Backups';
   static const String _LEAF = 'softagri_csv';
 
-  /// Returns the path: ['SoftAgri_Backups', '<yyyyyyyy+1>', 'softagri_csv']
+  /// Returns the path: ['Softagri_Backups', '<yyyyyyyy+1>', 'softagri_csv']
   static Future<List<String>> build(GoogleDriveService drive) async {
     try {
-      // 1️⃣  locate the top‑level "Financialyear_csv" folder
+      // 1️⃣  locate the top-level "Financialyear_csv" folder
       final fyFolderId = await drive.folderId(['Financialyear_csv']);
 
       // 2️⃣  download FinancialYear.csv
@@ -37,7 +36,25 @@ class SoftAgriPath {
     }
   }
 
-  // Accept 1 / true / yes  (case‑insensitive) as “ticked”
+  /// Get multiple possible year paths for fallback searching
+  static List<List<String>> getPossiblePaths() {
+    final currentYear = DateTime.now().year;
+    final possiblePaths = <List<String>>[];
+
+    // Add current and next few years as possibilities
+    for (int i = 0; i < 3; i++) {
+      final year = currentYear + i;
+      final folder = '$year${year + 1}';
+      possiblePaths.add([_ROOT, folder, _LEAF]);
+    }
+
+    // Add the hardcoded fallback
+    possiblePaths.add([_ROOT, '20252026', _LEAF]);
+
+    return possiblePaths;
+  }
+
+  // Accept 1 / true / yes  (case-insensitive) as "ticked"
   static bool _isChecked(dynamic v) {
     final str = v?.toString().toLowerCase() ?? '';
     return str == '1' || str == 'true' || str == 'yes';

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import '../controllers/automated_csv_controller.dart';
 import '../services/automated_csv_service.dart';
+import '../widget/csv_data_display_widget.dart';
 
 class AutomatedCsvScreen extends StatefulWidget {
   const AutomatedCsvScreen({super.key});
@@ -311,7 +312,7 @@ class _AutomatedCsvScreenState extends State<AutomatedCsvScreen>
       if (controller.csvFiles.isEmpty) {
         return _buildEmptyState(
           'No CSV files found',
-          'No CSV files were found in the Softagri_Backups folder.',
+          'No CSV files were found in the Softagri_Backups or Financialyear_csv folders.\nPlease check if files exist in: My Drive\\Softagri_Backups\\20252026\\softagri_csv',
           Icons.file_present_outlined,
         );
       }
@@ -620,21 +621,39 @@ class _AutomatedCsvScreenState extends State<AutomatedCsvScreen>
               child: file.isDownloaded && file.content != null
                   ? SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
-                  child: Text(
-                    file.content!,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
+                child: Column(
+                  children: [
+                    // CSV Table Display
+                    CsvDataDisplayWidget(
+                      csvFile: file,
+                      maxRows: 20,
+                      showHeaders: true,
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                    // Raw content toggle
+                    ExpansionTile(
+                      title: const Text('Raw CSV Content'),
+                      leading: const Icon(Icons.code),
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey[300]!),
+                          ),
+                          child: Text(
+                            file.content!,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               )
                   : Center(

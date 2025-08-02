@@ -3,10 +3,12 @@ import 'package:get/get.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:intl/intl.dart';
+import 'dart:io';
 
 import '../services/file_picker_service.dart';
 import '../services/google_drive_service.dart';
 import '../controllers/google_signin_controller.dart';
+import '../util/csv_utils.dart'; // Ensure you have this import
 
 class FilePickerScreen extends StatefulWidget {
   const FilePickerScreen({super.key});
@@ -18,6 +20,7 @@ class FilePickerScreen extends StatefulWidget {
 class _FilePickerScreenState extends State<FilePickerScreen> {
   final FilePickerService _filePickerService = Get.find<FilePickerService>();
   final GoogleSignInController _googleSignIn = Get.find<GoogleSignInController>();
+  final GoogleDriveService _driveService = Get.find<GoogleDriveService>(); // Added this for consistency
 
   final RxList<drive.File> _currentFiles = <drive.File>[].obs;
   final RxList<drive.File> _currentFolders = <drive.File>[].obs;
@@ -28,6 +31,10 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
 
   final List<String> _folderStack = ['root'];
   final List<String> _pathStack = ['My Drive'];
+
+  // New reactive variables for local CSV parsing
+  final RxList<Map<String, dynamic>> _csvData = <Map<String, dynamic>>[].obs;
+  final RxBool _isParsing = false.obs;
 
   @override
   void initState() {
@@ -51,118 +58,126 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
             icon: const Icon(Icons.create_new_folder),
             onPressed: _showCreateFolderDialog,
           ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => _googleSignIn.logout(),
+          ),
         ],
       ),
-      body: Obx(() => Column(
-        children: [
-          // Breadcrumb Navigation
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            color: Colors.grey[100],
-            child: Row(
-              children: [
-                Icon(Icons.folder_open, color: Colors.blue[600]),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _currentPath.value,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
+      body: Obx(() {
+        if (_isParsing.value) {
+          return const Center(child: CircularProgressIndicator());
+        } else if (_csvData.isNotEmpty) {
+          return _buildCsvDataTable();
+        } else {
+          return Column(
+            children: [
+              // Breadcrumb Navigation
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                color: Colors.grey[100],
+                child: Row(
+                  children: [
+                    Icon(Icons.folder_open, color: Colors.blue[600]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _currentPath.value,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ),
+                    if (_folderStack.length > 1)
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: _navigateBack,
+                      ),
+                  ],
+                ),
+              ),
+              // Upload Progress
+              if (_uploadProgress.value.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  color: Colors.blue[50],
+                  child: Text(
+                    _uploadProgress.value,
+                    style: TextStyle(color: Colors.blue[800]),
                   ),
                 ),
-                if (_folderStack.length > 1)
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: _navigateBack,
+              // File List
+              Expanded(
+                child: _isLoading.value
+                    ? const Center(child: CircularProgressIndicator())
+                    : RefreshIndicator(
+                  onRefresh: _loadCurrentFolder,
+                  child: ListView(
+                    children: [
+                      // Folders Section
+                      if (_currentFolders.isNotEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Text(
+                            'Folders',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        ..._currentFolders.map((folder) => _buildFolderTile(folder)),
+                        const Divider(),
+                      ],
+                      // Files Section
+                      if (_currentFiles.isNotEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Text(
+                            'Files',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        ..._currentFiles.map((file) => _buildFileTile(file)),
+                      ],
+                      // Empty State
+                      if (_currentFiles.isEmpty && _currentFolders.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Center(
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.folder_open_outlined,
+                                  size: 64,
+                                  color: Colors.grey,
+                                ),
+                                SizedBox(height: 16),
+                                Text(
+                                  'This folder is empty',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-              ],
-            ),
-          ),
-
-          // Upload Progress
-          if (_uploadProgress.value.isNotEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              color: Colors.blue[50],
-              child: Text(
-                _uploadProgress.value,
-                style: TextStyle(color: Colors.blue[800]),
+                ),
               ),
-            ),
-
-          // File List
-          Expanded(
-            child: _isLoading.value
-                ? const Center(child: CircularProgressIndicator())
-                : RefreshIndicator(
-              onRefresh: _loadCurrentFolder,
-              child: ListView(
-                children: [
-                  // Folders Section
-                  if (_currentFolders.isNotEmpty) ...[
-                    const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text(
-                        'Folders',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    ..._currentFolders.map((folder) => _buildFolderTile(folder)),
-                    const Divider(),
-                  ],
-
-                  // Files Section
-                  if (_currentFiles.isNotEmpty) ...[
-                    const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text(
-                        'Files',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    ..._currentFiles.map((file) => _buildFileTile(file)),
-                  ],
-
-                  // Empty State
-                  if (_currentFiles.isEmpty && _currentFolders.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Center(
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.folder_open_outlined,
-                              size: 64,
-                              color: Colors.grey,
-                            ),
-                            SizedBox(height: 16),
-                            Text(
-                              'This folder is empty',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      )),
+            ],
+          );
+        }
+      }),
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -176,7 +191,7 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
           const SizedBox(height: 16),
           FloatingActionButton.extended(
             heroTag: "pick_csv",
-            onPressed: _pickCsvFiles,
+            onPressed: _pickAndShowCsvFile, // New method to pick and show
             icon: const Icon(Icons.table_chart),
             label: const Text('Pick CSV'),
             backgroundColor: Colors.green,
@@ -187,6 +202,7 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
   }
 
   Widget _buildFolderTile(drive.File folder) {
+    // ... (existing _buildFolderTile code)
     return ListTile(
       leading: const Icon(Icons.folder, color: Colors.blue, size: 32),
       title: Text(
@@ -219,6 +235,7 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
   }
 
   Widget _buildFileTile(drive.File file) {
+    // ... (existing _buildFileTile code)
     final size = _formatFileSize(file.size);
     final date = _formatDate(file.modifiedTime);
     final isImage = file.mimeType?.startsWith('image/') ?? false;
@@ -285,7 +302,9 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
 
   Future<void> _loadCurrentFolder() async {
     _isLoading.value = true;
+    _csvData.clear(); // Clear any displayed CSV data when loading a new folder
     try {
+      // ... (existing _loadCurrentFolder code)
       final [folders, files] = await Future.wait([
         _filePickerService.getDriveFolders(parentId: _currentFolderId.value == 'root' ? null : _currentFolderId.value),
         _filePickerService.browseGoogleDriveFiles(folderId: _currentFolderId.value == 'root' ? null : _currentFolderId.value),
@@ -307,6 +326,8 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
   }
 
   void _navigateToFolder(drive.File folder) {
+    _csvData.clear(); // Clear local CSV data on navigation
+    // ... (existing _navigateToFolder code)
     if (folder.id != null) {
       _folderStack.add(folder.id!);
       _pathStack.add(folder.name ?? 'Unnamed');
@@ -317,6 +338,8 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
   }
 
   void _navigateBack() {
+    _csvData.clear(); // Clear local CSV data on navigation
+    // ... (existing _navigateBack code)
     if (_folderStack.length > 1) {
       _folderStack.removeLast();
       _pathStack.removeLast();
@@ -327,6 +350,7 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
   }
 
   Future<void> _pickAndUploadLocalFiles() async {
+    // ... (existing _pickAndUploadLocalFiles code)
     try {
       final files = await _filePickerService.pickLocalFiles(
         allowMultiple: true,
@@ -367,40 +391,48 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
     }
   }
 
-  Future<void> _pickCsvFiles() async {
+  Future<void> _pickAndShowCsvFile() async {
     try {
-      final files = await _filePickerService.pickLocalFiles(
+      _isParsing.value = true;
+      _csvData.clear();
+
+      final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['csv'],
-        allowMultiple: true,
+        allowMultiple: false,
       );
 
-      if (files != null && files.isNotEmpty) {
-        // Process CSV files - you can add specific CSV handling logic here
+      if (result != null && result.files.single.path != null) {
+        final filePath = result.files.single.path!;
+        final file = File(filePath);
+        final csvString = await file.readAsString();
+        final parsedData = CsvUtils.toMaps(csvString);
+
+        _csvData.assignAll(parsedData);
         Get.snackbar(
-          'CSV Files Selected',
-          'Selected ${files.length} CSV file(s): ${files.map((f) => f.name).join(', ')}',
+          'CSV Loaded',
+          'Successfully parsed ${parsedData.length} rows.',
           snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.blue,
+          backgroundColor: Colors.green,
           colorText: Colors.white,
         );
-
-        // Optionally upload them
-        await _filePickerService.uploadFilesToDrive(files, _currentFolderId.value);
-        _loadCurrentFolder();
       }
     } catch (e) {
       Get.snackbar(
         'Error',
-        'Failed to pick CSV files: $e',
+        'Failed to pick or parse CSV file: $e',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
+    } finally {
+      _isParsing.value = false;
     }
   }
 
+
   Future<void> _downloadFile(drive.File file) async {
+    // ... (existing _downloadFile code)
     if (file.id == null) return;
 
     try {
@@ -428,6 +460,7 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
   }
 
   Future<void> _deleteFile(drive.File file) async {
+    // ... (existing _deleteFile code)
     if (file.id == null) return;
 
     final confirm = await Get.dialog<bool>(
@@ -450,7 +483,7 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
 
     if (confirm == true) {
       try {
-        await Get.find<GoogleDriveService>().deleteFile(file.id!);
+        await _driveService.deleteFile(file.id!);
         Get.snackbar(
           'Deleted',
           'File ${file.name} deleted successfully',
@@ -472,6 +505,7 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
   }
 
   Future<void> _showCreateFolderDialog() async {
+    // ... (existing _showCreateFolderDialog code)
     final controller = TextEditingController();
 
     final folderName = await Get.dialog<String>(
@@ -525,16 +559,38 @@ class _FilePickerScreenState extends State<FilePickerScreen> {
     }
   }
 
+  Widget _buildCsvDataTable() {
+    final headers = _csvData.first.keys.toList();
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: DataTable(
+        columns: headers.map((header) => DataColumn(label: Text(header))).toList(),
+        rows: _csvData.map((row) {
+          return DataRow(
+            cells: headers.map((header) {
+              return DataCell(
+                Text(row[header]?.toString() ?? ''),
+                onTap: () {
+                  // Handle cell tap if needed
+                },
+              );
+            }).toList(),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // Helper functions
   String _formatFileSize(dynamic size) {
     if (size == null) return 'Unknown size';
-
     int bytes;
     try {
       bytes = int.parse(size.toString());
     } catch (e) {
       return 'Unknown size';
     }
-
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
