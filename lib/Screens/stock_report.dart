@@ -41,7 +41,7 @@ class _StockScreenState extends State<StockScreen> {
 
     // Load data initially
 
-    stockReportController.loadStockReport();
+    //stockReportController.loadStockReport();
   }
 
   @override
@@ -135,7 +135,7 @@ class _StockScreenState extends State<StockScreen> {
 
                         ElevatedButton(
                           onPressed: () => stockReportController
-                              .loadStockReport(forceRefresh: false),
+                              .loadStockReport(forceRefresh: true),
 
                           child: const Text('Retry'),
                         ),

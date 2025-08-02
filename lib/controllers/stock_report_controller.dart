@@ -124,7 +124,7 @@ class StockReportController extends GetxController {
   }
 
   /// Loads stock report data from CSVs.
-  Future<void> loadStockReport({bool forceRefresh = false}) async {
+  Future<void> loadStockReport({bool forceRefresh = true}) async {
     isLoading.value = true;
     errorMessage.value = null;
     processingProgress.value = 0.0;
