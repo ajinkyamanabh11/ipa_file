@@ -222,6 +222,143 @@ class GoogleDriveService extends GetxService {
 
     return utf8.decode(combined);
   }
+
+  /// Upload file to Google Drive with drive.file scope
+  Future<String> uploadFile({
+    required String fileName,
+    required List<int> fileData,
+    required String parentFolderId,
+    String? mimeType,
+    Function(double)? onProgress,
+  }) async {
+    final api = await _api();
+
+    try {
+      // Create file metadata
+      final fileMetadata = drive.File()
+        ..name = fileName
+        ..parents = [parentFolderId];
+
+      // Create media for upload
+      final media = drive.Media(
+        Stream.fromIterable([fileData]),
+        fileData.length,
+        contentType: mimeType ?? 'application/octet-stream',
+      );
+
+      // Upload the file
+      final uploadedFile = await api.files.create(
+        fileMetadata,
+        uploadMedia: media,
+      );
+
+      if (uploadedFile.id == null) {
+        throw Exception('Failed to upload file: No file ID returned');
+      }
+
+      return uploadedFile.id!;
+    } catch (e) {
+      throw Exception('Failed to upload file $fileName: $e');
+    }
+  }
+
+  /// Create a new folder in Google Drive
+  Future<String> createFolder({
+    required String folderName,
+    String? parentFolderId,
+  }) async {
+    final api = await _api();
+
+    try {
+      final folderMetadata = drive.File()
+        ..name = folderName
+        ..mimeType = 'application/vnd.google-apps.folder';
+
+      if (parentFolderId != null) {
+        folderMetadata.parents = [parentFolderId];
+      }
+
+      final createdFolder = await api.files.create(folderMetadata);
+
+      if (createdFolder.id == null) {
+        throw Exception('Failed to create folder: No folder ID returned');
+      }
+
+      return createdFolder.id!;
+    } catch (e) {
+      throw Exception('Failed to create folder $folderName: $e');
+    }
+  }
+
+  /// List files in a specific folder
+  Future<List<drive.File>> listFiles({
+    String? folderId,
+    String? query,
+    int pageSize = 20,
+  }) async {
+    final api = await _api();
+
+    try {
+      String searchQuery = "trashed = false";
+      
+      if (folderId != null) {
+        searchQuery += " and '$folderId' in parents";
+      }
+      
+      if (query != null && query.isNotEmpty) {
+        searchQuery += " and name contains '$query'";
+      }
+
+      final fileList = await api.files.list(
+        q: searchQuery,
+        pageSize: pageSize,
+        fields: 'files(id,name,mimeType,size,modifiedTime,parents)',
+        orderBy: 'modifiedTime desc',
+      );
+
+      return fileList.files ?? [];
+    } catch (e) {
+      throw Exception('Failed to list files: $e');
+    }
+  }
+
+  /// Delete a file from Google Drive
+  Future<void> deleteFile(String fileId) async {
+    final api = await _api();
+
+    try {
+      await api.files.delete(fileId);
+    } catch (e) {
+      throw Exception('Failed to delete file: $e');
+    }
+  }
+
+  /// Update file content
+  Future<String> updateFile({
+    required String fileId,
+    required List<int> fileData,
+    String? mimeType,
+  }) async {
+    final api = await _api();
+
+    try {
+      final media = drive.Media(
+        Stream.fromIterable([fileData]),
+        fileData.length,
+        contentType: mimeType ?? 'application/octet-stream',
+      );
+
+      final updatedFile = await api.files.update(
+        drive.File(),
+        fileId,
+        uploadMedia: media,
+      );
+
+      return updatedFile.id!;
+    } catch (e) {
+      throw Exception('Failed to update file: $e');
+    }
+  }
 }
 
 // private auth client

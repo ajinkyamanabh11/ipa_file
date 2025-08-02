@@ -20,4 +20,5 @@ class Routes {
   static const profit         = '/profit';
   static const transactions   = '/transactions';
   static const profile = '/profile';
+  static const filePicker = '/file-picker';
 }
