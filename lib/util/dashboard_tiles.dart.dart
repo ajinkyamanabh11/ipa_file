@@ -21,6 +21,7 @@ IconData dashIcon(String label) {
     case 'profit':           return Icons.show_chart;
     case 'transactions':     return Icons.receipt_long;
     case 'sales flow':       return Icons.swap_horiz;
+    case 'file picker':      return Icons.cloud_download;
     default:                 return Icons.help_outline;
   }
 }
@@ -49,6 +50,7 @@ const List<DashTile> drawerTiles = [
   DashTile('Creditors',           Routes.creditors),  // ✅ fixed
   DashTile('Profit',              Routes.profit),
   DashTile('Transactions',        Routes.transactions),
+  DashTile('File Picker',         Routes.filePicker),
   DashTile('Sales Purchase Flow', ''),               // add route later
 ];
 

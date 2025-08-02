@@ -1,7 +1,5 @@
 import 'dart:convert';
-import 'dart:developer';
 import 'dart:typed_data';
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:http/http.dart' as http;
@@ -225,409 +223,142 @@ class GoogleDriveService extends GetxService {
     return utf8.decode(combined);
   }
 
-  // ───────────────────────────────── File Picker Methods ──────────────────
-
-  /// List files from Google Drive with filtering options
-  Future<List<DriveFile>> listFiles({
-    List<String>? mimeTypes,
-    String? folderId,
-    String? nameContains,
-    int pageSize = 100,
-    String? pageToken,
+  /// Upload file to Google Drive with drive.file scope
+  Future<String> uploadFile({
+    required String fileName,
+    required List<int> fileData,
+    required String parentFolderId,
+    String? mimeType,
+    Function(double)? onProgress,
   }) async {
+    final api = await _api();
+
     try {
-      final api = await _api();
+      // Create file metadata
+      final fileMetadata = drive.File()
+        ..name = fileName
+        ..parents = [parentFolderId];
 
-      // Build query string
-      final queryParts = <String>[];
-
-      // Filter by MIME types
-      if (mimeTypes != null && mimeTypes.isNotEmpty) {
-        final mimeQuery = mimeTypes.map((mime) => "mimeType='$mime'").join(' or ');
-        queryParts.add('($mimeQuery)');
-      }
-
-      // Filter by parent folder
-      if (folderId != null) {
-        queryParts.add("'$folderId' in parents");
-      }
-
-      // Filter by name
-      if (nameContains != null) {
-        queryParts.add("name contains '$nameContains'");
-      }
-
-      // Exclude trashed files
-      queryParts.add('trashed=false');
-
-      final query = queryParts.join(' and ');
-
-      log('Drive API query: $query');
-
-      final fileList = await api.files.list(
-        q: query,
-        pageSize: pageSize,
-        pageToken: pageToken,
-        $fields: 'nextPageToken, files(id, name, mimeType, size, parents, createdTime, modifiedTime, webViewLink, webContentLink, thumbnailLink)',
+      // Create media for upload
+      final media = drive.Media(
+        Stream.fromIterable([fileData]),
+        fileData.length,
+        contentType: mimeType ?? 'application/octet-stream',
       );
 
-      return fileList.files?.map((file) => DriveFile.fromGoogleDriveFile(file)).toList() ?? [];
+      // Upload the file
+      final uploadedFile = await api.files.create(
+        fileMetadata,
+        uploadMedia: media,
+      );
 
+      if (uploadedFile.id == null) {
+        throw Exception('Failed to upload file: No file ID returned');
+      }
+
+      return uploadedFile.id!;
     } catch (e) {
-      log('Error listing files: $e');
+      throw Exception('Failed to upload file $fileName: $e');
+    }
+  }
+
+  /// Create a new folder in Google Drive
+  Future<String> createFolder({
+    required String folderName,
+    String? parentFolderId,
+  }) async {
+    final api = await _api();
+
+    try {
+      final folderMetadata = drive.File()
+        ..name = folderName
+        ..mimeType = 'application/vnd.google-apps.folder';
+
+      if (parentFolderId != null) {
+        folderMetadata.parents = [parentFolderId];
+      }
+
+      final createdFolder = await api.files.create(folderMetadata);
+
+      if (createdFolder.id == null) {
+        throw Exception('Failed to create folder: No folder ID returned');
+      }
+
+      return createdFolder.id!;
+    } catch (e) {
+      throw Exception('Failed to create folder $folderName: $e');
+    }
+  }
+
+  /// List files in a specific folder
+  Future<List<drive.File>> listFiles({
+    String? folderId,
+    String? query,
+    int pageSize = 20,
+  }) async {
+    final api = await _api();
+
+    try {
+      String searchQuery = "trashed = false";
+
+      if (folderId != null) {
+        searchQuery += " and '$folderId' in parents";
+      }
+
+      if (query != null && query.isNotEmpty) {
+        searchQuery += " and name contains '$query'";
+      }
+
+      final fileList = await api.files.list(
+        q: searchQuery,
+        pageSize: pageSize,
+        $fields: 'files(id,name,mimeType,size,modifiedTime,parents)',
+        orderBy: 'modifiedTime desc',
+      );
+
+      return fileList.files ?? [];
+    } catch (e) {
       throw Exception('Failed to list files: $e');
     }
   }
 
-  /// Show a file picker dialog with the specified filters
-  Future<List<DriveFile>?> pickFiles({
-    bool multiSelect = false,
-    List<String>? mimeTypes,
-    String? folderId,
-    String? title,
+  /// Delete a file from Google Drive
+  Future<void> deleteFile(String fileId) async {
+    final api = await _api();
+
+    try {
+      await api.files.delete(fileId);
+    } catch (e) {
+      throw Exception('Failed to delete file: $e');
+    }
+  }
+
+  /// Update file content
+  Future<String> updateFile({
+    required String fileId,
+    required List<int> fileData,
+    String? mimeType,
   }) async {
+    final api = await _api();
+
     try {
-      final files = await listFiles(
-        mimeTypes: mimeTypes,
-        folderId: folderId,
+      final media = drive.Media(
+        Stream.fromIterable([fileData]),
+        fileData.length,
+        contentType: mimeType ?? 'application/octet-stream',
       );
 
-      if (files.isEmpty) {
-        Get.snackbar(
-          'No Files Found',
-          'No files matching the criteria were found in your Google Drive.',
-          snackPosition: SnackPosition.BOTTOM,
-        );
-        return null;
-      }
-
-      // Show selection dialog
-      return await _showFileSelectionDialog(
-        files: files,
-        multiSelect: multiSelect,
-        title: title ?? 'Select Files',
-      );
-
-    } catch (e) {
-      log('Error in pickFiles: $e');
-      Get.snackbar(
-        'Error',
-        'Failed to load files: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
-      return null;
-    }
-  }
-
-  /// Pick CSV files specifically
-  Future<List<DriveFile>?> pickCsvFiles({bool multiSelect = false}) async {
-    return pickFiles(
-      multiSelect: multiSelect,
-      mimeTypes: [
-        'text/csv',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.google-apps.spreadsheet',
-      ],
-      title: 'Select CSV Files',
-    );
-  }
-
-  /// Pick files from a specific folder
-  Future<List<DriveFile>?> pickFilesFromFolder(
-      String folderId, {
-        bool multiSelect = false,
-        List<String>? mimeTypes,
-      }) async {
-    return pickFiles(
-      multiSelect: multiSelect,
-      mimeTypes: mimeTypes,
-      folderId: folderId,
-      title: 'Select Files from Folder',
-    );
-  }
-
-  /// Download file content as bytes
-  Future<List<int>?> downloadFileAsBytes(String fileId) async {
-    try {
-      final api = await _api();
-
-      final media = await api.files.get(fileId, downloadOptions: drive.DownloadOptions.fullMedia) as drive.Media;
-
-      final List<int> bytes = [];
-      await for (final chunk in media.stream) {
-        bytes.addAll(chunk);
-      }
-
-      return bytes;
-
-    } catch (e) {
-      log('Error downloading file: $e');
-      throw Exception('Failed to download file: $e');
-    }
-  }
-
-  /// Get file metadata
-  Future<DriveFile?> getFileMetadata(String fileId) async {
-    try {
-      final api = await _api();
-
-      // Explicitly cast the result of api.files.get to drive.File
-      final file = await api.files.get(
+      final updatedFile = await api.files.update(
+        drive.File(),
         fileId,
-        $fields: 'id, name, mimeType, size, parents, createdTime, modifiedTime, webViewLink, webContentLink, thumbnailLink',
-      ) as drive.File;
+        uploadMedia: media,
+      );
 
-      // Now, you can safely pass the file object to the factory constructor
-      return DriveFile.fromGoogleDriveFile(file);
-
+      return updatedFile.id!;
     } catch (e) {
-      log('Error getting file metadata: $e');
-      throw Exception('Failed to get file metadata: $e');
+      throw Exception('Failed to update file: $e');
     }
   }
-
-  /// Show file selection dialog
-  Future<List<DriveFile>?> _showFileSelectionDialog({
-    required List<DriveFile> files,
-    required bool multiSelect,
-    required String title,
-  }) async {
-    final selectedFiles = <DriveFile>[];
-
-    return await Get.dialog<List<DriveFile>?>(
-      AlertDialog(
-        title: Text(title),
-        content: SizedBox(
-          width: Get.width * 0.8,
-          height: Get.height * 0.6,
-          child: StatefulBuilder(
-            builder: (context, setState) {
-              return Column(
-                children: [
-                  if (multiSelect) ...[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('${selectedFiles.length} selected'),
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              selectedFiles.clear();
-                            });
-                          },
-                          child: const Text('Clear All'),
-                        ),
-                      ],
-                    ),
-                    const Divider(),
-                  ],
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: files.length,
-                      itemBuilder: (context, index) {
-                        final file = files[index];
-                        final isSelected = selectedFiles.contains(file);
-
-                        return ListTile(
-                          leading: Icon(
-                            _getFileIcon(file.mimeType),
-                            color: _getFileIconColor(file.mimeType),
-                          ),
-                          title: Text(
-                            file.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(_getFileTypeLabel(file.mimeType)),
-                              if (file.sizeBytes != null)
-                                Text(_formatFileSize(file.sizeBytes!)),
-                              if (file.modifiedTime != null)
-                                Text('Modified: ${_formatDate(file.modifiedTime!)}'),
-                            ],
-                          ),
-                          trailing: multiSelect
-                              ? Checkbox(
-                            value: isSelected,
-                            onChanged: (value) {
-                              setState(() {
-                                if (value == true) {
-                                  selectedFiles.add(file);
-                                } else {
-                                  selectedFiles.remove(file);
-                                }
-                              });
-                            },
-                          )
-                              : null,
-                          selected: isSelected,
-                          onTap: () {
-                            if (multiSelect) {
-                              setState(() {
-                                if (isSelected) {
-                                  selectedFiles.remove(file);
-                                } else {
-                                  selectedFiles.add(file);
-                                }
-                              });
-                            } else {
-                              Get.back(result: [file]);
-                            }
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back(result: null),
-            child: const Text('Cancel'),
-          ),
-          if (multiSelect)
-            ElevatedButton(
-              onPressed: selectedFiles.isEmpty
-                  ? null
-                  : () => Get.back(result: selectedFiles),
-              child: Text('Select (${selectedFiles.length})'),
-            ),
-        ],
-      ),
-    );
-  }
-
-  // Helper methods for file display
-  IconData _getFileIcon(String mimeType) {
-    if (mimeType.startsWith('image/')) return Icons.image;
-    if (mimeType.startsWith('video/')) return Icons.video_file;
-    if (mimeType.startsWith('audio/')) return Icons.audio_file;
-    if (mimeType.contains('pdf')) return Icons.picture_as_pdf;
-    if (mimeType.contains('spreadsheet') || mimeType.contains('excel') || mimeType.contains('csv')) {
-      return Icons.table_chart;
-    }
-    if (mimeType.contains('document') || mimeType.contains('word')) return Icons.description;
-    if (mimeType.contains('presentation') || mimeType.contains('powerpoint')) return Icons.slideshow;
-    if (mimeType.contains('folder')) return Icons.folder;
-    return Icons.insert_drive_file;
-  }
-
-  Color _getFileIconColor(String mimeType) {
-    if (mimeType.startsWith('image/')) return Colors.purple;
-    if (mimeType.startsWith('video/')) return Colors.red;
-    if (mimeType.startsWith('audio/')) return Colors.orange;
-    if (mimeType.contains('pdf')) return Colors.red;
-    if (mimeType.contains('spreadsheet') || mimeType.contains('excel') || mimeType.contains('csv')) {
-      return Colors.green;
-    }
-    if (mimeType.contains('document') || mimeType.contains('word')) return Colors.blue;
-    if (mimeType.contains('presentation') || mimeType.contains('powerpoint')) return Colors.orange;
-    if (mimeType.contains('folder')) return Colors.amber;
-    return Colors.grey;
-  }
-
-  String _getFileTypeLabel(String mimeType) {
-    if (mimeType.startsWith('image/')) return 'Image';
-    if (mimeType.startsWith('video/')) return 'Video';
-    if (mimeType.startsWith('audio/')) return 'Audio';
-    if (mimeType.contains('pdf')) return 'PDF';
-    if (mimeType.contains('csv')) return 'CSV';
-    if (mimeType.contains('spreadsheet')) return 'Spreadsheet';
-    if (mimeType.contains('excel')) return 'Excel';
-    if (mimeType.contains('document')) return 'Document';
-    if (mimeType.contains('word')) return 'Word Document';
-    if (mimeType.contains('presentation')) return 'Presentation';
-    if (mimeType.contains('powerpoint')) return 'PowerPoint';
-    if (mimeType.contains('folder')) return 'Folder';
-    return 'File';
-  }
-
-  String _formatFileSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
-  }
-}
-
-/// Data class representing a Google Drive file
-class DriveFile {
-  final String id;
-  final String name;
-  final String mimeType;
-  final int? sizeBytes;
-  final List<String>? parents;
-  final DateTime? createdTime;
-  final DateTime? modifiedTime;
-  final String? webViewLink;
-  final String? webContentLink;
-  final String? thumbnailLink;
-
-  DriveFile({
-    required this.id,
-    required this.name,
-    required this.mimeType,
-    this.sizeBytes,
-    this.parents,
-    this.createdTime,
-    this.modifiedTime,
-    this.webViewLink,
-    this.webContentLink,
-    this.thumbnailLink,
-  });
-
-  factory DriveFile.fromGoogleDriveFile(drive.File file) {
-    return DriveFile(
-      id: file.id ?? '',
-      name: file.name ?? 'Unknown',
-      mimeType: file.mimeType ?? 'application/octet-stream',
-      sizeBytes: file.size != null ? int.tryParse(file.size!) : null,
-      parents: file.parents,
-      createdTime: file.createdTime,
-      modifiedTime: file.modifiedTime,
-      webViewLink: file.webViewLink,
-      webContentLink: file.webContentLink,
-      thumbnailLink: file.thumbnailLink,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'mimeType': mimeType,
-      'sizeBytes': sizeBytes,
-      'parents': parents,
-      'createdTime': createdTime?.toIso8601String(),
-      'modifiedTime': modifiedTime?.toIso8601String(),
-      'webViewLink': webViewLink,
-      'webContentLink': webContentLink,
-      'thumbnailLink': thumbnailLink,
-    };
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-          other is DriveFile &&
-              runtimeType == other.runtimeType &&
-              id == other.id;
-
-  @override
-  int get hashCode => id.hashCode;
-
-  @override
-  String toString() => 'DriveFile(id: $id, name: $name, mimeType: $mimeType)';
 }
 
 // private auth client
