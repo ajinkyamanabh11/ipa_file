@@ -23,4 +23,5 @@ class Routes {
   static const transactions   = '/transactions';
   static const profile = '/profile';
   static const filePicker = '/file-picker';
+  static const automatedCsv = '/automated-csv';
 }

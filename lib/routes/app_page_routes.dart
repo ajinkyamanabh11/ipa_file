@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:googleapis/dataproc/v1.dart';
 import '../Screens/User_profile_screen.dart';
 import '../Screens/file_picker_screen.dart.dart';
+import '../Screens/automated_csv_screen.dart';
 import '../Screens/splash_screen.dart';
 import '../Screens/walktrough_screen.dart';
 import '../screens/home_screen.dart';
@@ -35,6 +36,7 @@ class AppPages {
     GetPage(name: Routes.itemTypes, page: () => StockScreen()),
     GetPage(name: Routes.itemList, page: () => const ItemListScreen()),
     GetPage(name: Routes.filePicker, page: () => const FilePickerScreen()),
+    GetPage(name: Routes.automatedCsv, page: () => const AutomatedCsvScreen()),
     GetPage(name: Routes.profile, page: () => const ProfileScreen()),// <-- Must be present and correctly defined
     //(name: Routes.driveFilePickerDemo, page: () => const   DriveFilePickerDemo()),
   ];
