@@ -13,6 +13,7 @@ import '../controllers/sales_controller.dart';
 import '../controllers/theme_controller.dart';
 import '../services/CsvDataServices.dart';
 import '../services/google_drive_service.dart';
+import '../services/google_picker_service.dart';
 import '../services/background_processor.dart';
 import '../util/memory_monitor.dart'; // NEW IMPORT
 
@@ -41,6 +42,9 @@ class InitialBindings {
           () => GoogleDriveService.init(),
       permanent: true,
     );
+
+    // 2️⃣b Google Picker service (for drive.file scope)
+    Get.put<GooglePickerService>(GooglePickerService(), permanent: true);
 
     // 🔴 NEW: Centralized CSV Data Service
     Get.put<CsvDataService>(CsvDataService(), permanent: true);

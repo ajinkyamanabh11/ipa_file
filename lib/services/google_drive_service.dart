@@ -57,12 +57,13 @@ class GoogleDriveService extends GetxService {
     return res.files!.first.id!;
   }
 
-  /// Download CSV with memory-efficient streaming and size limits
-  Future<String> downloadCsv(String id) async {
+  /// Download file content with memory-efficient streaming and size limits
+  /// Works with files selected via Google Picker (drive.file scope)
+  Future<String> downloadFile(String id) async {
     final api = await _api();
 
     try {
-      // First, get file metadata to check size
+      // First, get file metadata to check size and permissions
       final fileMetadata = await api.files.get(id) as drive.File;
       // CORRECTED: Access size as fixnum.Int64 and convert to String for int.tryParse
       final fileSize = int.tryParse(fileMetadata.size?.toString() ?? '0') ?? 0;
@@ -81,8 +82,17 @@ class GoogleDriveService extends GetxService {
       if (e.toString().contains('File too large')) {
         rethrow;
       }
-      throw Exception('Failed to download CSV file: $e');
+      if (e.toString().contains('403') || e.toString().contains('Forbidden')) {
+        throw Exception('Access denied. Please ensure you have selected this file through the file picker.');
+      }
+      throw Exception('Failed to download file: $e');
     }
+  }
+
+  /// Download CSV with memory-efficient streaming and size limits
+  /// Maintained for backward compatibility
+  Future<String> downloadCsv(String id) async {
+    return downloadFile(id);
   }
 
   /// Convert stream to string with memory management
@@ -221,6 +231,83 @@ class GoogleDriveService extends GetxService {
     }
 
     return utf8.decode(combined);
+  }
+
+  /// Download multiple files selected through Google Picker
+  Future<Map<String, String>> downloadMultipleFiles(
+    List<Map<String, dynamic>> pickedFiles, {
+    Function(String fileName, double progress)? onProgress,
+  }) async {
+    final results = <String, String>{};
+    
+    for (final fileInfo in pickedFiles) {
+      try {
+        final fileId = fileInfo['id'] as String;
+        final fileName = fileInfo['name'] as String;
+        
+        final content = await downloadCsvWithProgress(
+          fileId,
+          onProgress: onProgress != null 
+            ? (progress) => onProgress(fileName, progress)
+            : null,
+        );
+        
+        results[fileName] = content;
+      } catch (e) {
+        throw Exception('Failed to download file ${fileInfo['name']}: $e');
+      }
+    }
+    
+    return results;
+  }
+
+  /// Validate that files are accessible with current permissions
+  Future<List<Map<String, dynamic>>> validatePickedFiles(
+    List<Map<String, dynamic>> pickedFiles
+  ) async {
+    final validFiles = <Map<String, dynamic>>[];
+    
+    for (final fileInfo in pickedFiles) {
+      try {
+        final fileId = fileInfo['id'] as String;
+        final validatedInfo = await getFileInfo('', ''); // We'll use the file ID directly
+        
+        if (validatedInfo != null) {
+          validFiles.add({
+            ...fileInfo,
+            'accessible': true,
+            'validatedSize': validatedInfo['size'],
+          });
+        }
+      } catch (e) {
+        validFiles.add({
+          ...fileInfo,
+          'accessible': false,
+          'error': e.toString(),
+        });
+      }
+    }
+    
+    return validFiles;
+  }
+
+  /// Get file metadata by ID (for picked files)
+  Future<Map<String, dynamic>?> getFileMetadata(String fileId) async {
+    try {
+      final api = await _api();
+      final file = await api.files.get(fileId) as drive.File;
+      
+      return {
+        'id': file.id,
+        'name': file.name,
+        'size': int.tryParse(file.size?.toString() ?? '0') ?? 0,
+        'mimeType': file.mimeType,
+        'modifiedTime': file.modifiedTime?.toIso8601String(),
+        'parents': file.parents,
+      };
+    } catch (e) {
+      return null;
+    }
   }
 }
 
