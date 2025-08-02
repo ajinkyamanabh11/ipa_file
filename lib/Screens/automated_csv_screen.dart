@@ -311,7 +311,7 @@ class _AutomatedCsvScreenState extends State<AutomatedCsvScreen>
       if (controller.csvFiles.isEmpty) {
         return _buildEmptyState(
           'No CSV files found',
-          'No CSV files were found in the Softagri_Backups folder.',
+          'No CSV files were found in the Softagri_Backups or Financialyear_csv folders.',
           Icons.file_present_outlined,
         );
       }
@@ -393,6 +393,22 @@ class _AutomatedCsvScreenState extends State<AutomatedCsvScreen>
                           ),
                         ),
                         const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: file.source == 'Softagri_Backups' ? Colors.blue.withOpacity(0.1) : Colors.purple.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'Source: ${file.source}',
+                            style: TextStyle(
+                              color: file.source == 'Softagri_Backups' ? Colors.blue : Colors.purple,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
                         Row(
                           children: [
                             if (file.size != null) ...[

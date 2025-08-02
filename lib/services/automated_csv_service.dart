@@ -11,6 +11,7 @@ class CsvFileInfo {
   final DateTime? modifiedTime;
   final String? content;
   final bool isDownloaded;
+  final String source; // New field to track source directory
 
   CsvFileInfo({
     required this.id,
@@ -19,6 +20,7 @@ class CsvFileInfo {
     this.modifiedTime,
     this.content,
     this.isDownloaded = false,
+    this.source = 'Unknown',
   });
 
   CsvFileInfo copyWith({
@@ -28,6 +30,7 @@ class CsvFileInfo {
     DateTime? modifiedTime,
     String? content,
     bool? isDownloaded,
+    String? source,
   }) {
     return CsvFileInfo(
       id: id ?? this.id,
@@ -36,53 +39,133 @@ class CsvFileInfo {
       modifiedTime: modifiedTime ?? this.modifiedTime,
       content: content ?? this.content,
       isDownloaded: isDownloaded ?? this.isDownloaded,
+      source: source ?? this.source,
     );
   }
 }
+/// Enhanced service for automatically discovering and managing CSV files
+/// from multiple Google Drive directories:
+/// 1. Softagri_Backups/<year>/<year+1>/softagri_csv (dynamic year detection)
+/// 2. Financialyear_csv (static directory)
+/// 
+/// Features:
+/// - Dual directory search with fallback mechanisms
+/// - Automatic year detection from FinancialYear.csv
+/// - Source tracking for each discovered file
+/// - Duplicate file handling
 class AutomatedCsvService extends GetxService {
   final GoogleDriveService _driveService = Get.find<GoogleDriveService>();
   final FilePickerService _filePickerService = Get.find<FilePickerService>();
 
 
 
-  /// Search for all CSV files in the Softagri_Backups,Financialyear_csv folder
+  /// Search for all CSV files in both Softagri_Backups and Financialyear_csv folders
   Future<List<CsvFileInfo>> searchCsvFiles() async {
   try {
-  log('🔍 AutomatedCsvService: Starting CSV file search...');
-
-  // Get the Softagri_Backups path using the existing SoftAgriPath
-  final pathSegments = await SoftAgriPath.build(_driveService);
-  log('📁 AutomatedCsvService: Target path: ${pathSegments.join('/')}');
-
-  // Get the folder ID for the target path
-  final folderId = await _driveService.folderId(pathSegments);
-  log('📂 AutomatedCsvService: Found folder ID: $folderId');
-
-  // Search for CSV files in the folder
-  final csvFiles = await _filePickerService.browseGoogleDriveFiles(
-  folderId: folderId,
-  query: '.csv',
-  );
-
-  // Filter only CSV files and convert to CsvFileInfo
-  final csvFileInfos = csvFiles
-      .where((file) =>
-  file.name?.toLowerCase().endsWith('.csv') == true &&
-  file.mimeType?.contains('csv') == true)
-      .map((file) => CsvFileInfo(
-  id: file.id!,
-  name: file.name!,
-  size: _formatFileSize(file.size),
-  modifiedTime: file.modifiedTime,
-  ))
-      .toList();
-
-  log('✅ AutomatedCsvService: Found ${csvFileInfos.length} CSV files');
-  return csvFileInfos;
+  log('🔍 AutomatedCsvService: Starting comprehensive CSV file search...');
+  
+  final allCsvFiles = <CsvFileInfo>[];
+  
+  // Search in Softagri_Backups path
+  try {
+    final softagriFiles = await _searchInSoftagriBackups();
+    allCsvFiles.addAll(softagriFiles);
+    log('📁 AutomatedCsvService: Found ${softagriFiles.length} files in Softagri_Backups');
   } catch (e) {
-  log('❌ AutomatedCsvService: Error searching CSV files: $e');
+    log('⚠️ AutomatedCsvService: Error searching Softagri_Backups: $e');
+  }
+  
+  // Search in Financialyear_csv path
+  try {
+    final financialYearFiles = await _searchInFinancialYearCsv();
+    allCsvFiles.addAll(financialYearFiles);
+    log('📁 AutomatedCsvService: Found ${financialYearFiles.length} files in Financialyear_csv');
+  } catch (e) {
+    log('⚠️ AutomatedCsvService: Error searching Financialyear_csv: $e');
+  }
+
+  // Remove duplicates based on file name (keep the first occurrence)
+  final uniqueFiles = <String, CsvFileInfo>{};
+  for (final file in allCsvFiles) {
+    if (!uniqueFiles.containsKey(file.name)) {
+      uniqueFiles[file.name] = file;
+    }
+  }
+  
+  final finalList = uniqueFiles.values.toList();
+  log('✅ AutomatedCsvService: Total unique CSV files found: ${finalList.length}');
+  return finalList;
+  } catch (e) {
+  log('❌ AutomatedCsvService: Error during comprehensive CSV search: $e');
   throw Exception('Failed to search CSV files: $e');
   }
+  }
+
+  /// Search CSV files in Softagri_Backups directory
+  Future<List<CsvFileInfo>> _searchInSoftagriBackups() async {
+    try {
+      // Get the Softagri_Backups path using the existing SoftAgriPath
+      final pathSegments = await SoftAgriPath.build(_driveService);
+      log('📁 AutomatedCsvService: Softagri_Backups path: ${pathSegments.join('/')}');
+
+      // Get the folder ID for the target path
+      final folderId = await _driveService.folderId(pathSegments);
+      log('📂 AutomatedCsvService: Softagri_Backups folder ID: $folderId');
+
+      return await _searchCsvInFolder(folderId, 'Softagri_Backups');
+    } catch (e) {
+      log('⚠️ AutomatedCsvService: Primary path failed, trying fallback paths: $e');
+      
+      // Try fallback paths
+      final possiblePaths = SoftAgriPath.getPossiblePaths();
+      for (final pathSegments in possiblePaths) {
+        try {
+          log('📁 AutomatedCsvService: Trying fallback path: ${pathSegments.join('/')}');
+          final folderId = await _driveService.folderId(pathSegments);
+          log('📂 AutomatedCsvService: Found fallback folder ID: $folderId');
+          return await _searchCsvInFolder(folderId, 'Softagri_Backups');
+        } catch (fallbackError) {
+          log('⚠️ AutomatedCsvService: Fallback path failed: ${pathSegments.join('/')} - $fallbackError');
+          continue;
+        }
+      }
+      
+      throw Exception('All Softagri_Backups paths failed: $e');
+    }
+  }
+
+  /// Search CSV files in Financialyear_csv directory
+  Future<List<CsvFileInfo>> _searchInFinancialYearCsv() async {
+    // Get the Financialyear_csv folder ID
+    final folderId = await _driveService.folderId(['Financialyear_csv']);
+    log('📂 AutomatedCsvService: Financialyear_csv folder ID: $folderId');
+
+    return await _searchCsvInFolder(folderId, 'Financialyear_csv');
+  }
+
+  /// Search CSV files in a specific folder
+  Future<List<CsvFileInfo>> _searchCsvInFolder(String folderId, String sourcePath) async {
+    // Search for CSV files in the folder
+    final csvFiles = await _filePickerService.browseGoogleDriveFiles(
+      folderId: folderId,
+      query: '.csv',
+    );
+
+    // Filter only CSV files and convert to CsvFileInfo
+    final csvFileInfos = csvFiles
+        .where((file) =>
+    file.name?.toLowerCase().endsWith('.csv') == true &&
+    file.mimeType?.contains('csv') == true)
+        .map((file) => CsvFileInfo(
+    id: file.id!,
+    name: file.name!,
+    size: _formatFileSize(file.size),
+    modifiedTime: file.modifiedTime,
+    source: sourcePath,
+    ))
+        .toList();
+
+    return csvFileInfos;
   }
 
   /// Download all CSV files automatically
@@ -96,7 +179,7 @@ class AutomatedCsvService extends GetxService {
   for (int i = 0; i < csvFiles.length; i++) {
   final file = csvFiles[i];
   try {
-  log('📥 AutomatedCsvService: Downloading ${file.name} (${i + 1}/${csvFiles.length})');
+  log('📥 AutomatedCsvService: Downloading ${file.name} from ${file.source} (${i + 1}/${csvFiles.length})');
 
   final content = await _filePickerService.downloadDriveFileToLocal(
   file.id,
@@ -128,7 +211,7 @@ class AutomatedCsvService extends GetxService {
   /// Download a specific CSV file
   Future<CsvFileInfo> downloadSpecificCsvFile(CsvFileInfo fileInfo) async {
   try {
-  log('📥 AutomatedCsvService: Downloading specific file: ${fileInfo.name}');
+  log('📥 AutomatedCsvService: Downloading specific file: ${fileInfo.name} from ${fileInfo.source}');
 
   final content = await _filePickerService.downloadDriveFileToLocal(
   fileInfo.id,
