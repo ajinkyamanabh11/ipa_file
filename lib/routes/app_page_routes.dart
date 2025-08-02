@@ -12,6 +12,7 @@ import '../screens/sales_screen.dart';
 import '../screens/profit_screen.dart';
 import '../screens/stock_Screens/item_type_screen.dart';
 import '../screens/stock_Screens/item_list_screen.dart';
+import '../Screens/drive_file_picker_demo.dart';
  // <-- Ensure this import exists
 
 import 'routes.dart';
@@ -30,5 +31,6 @@ class AppPages {
     GetPage(name: Routes.itemTypes, page: () => StockScreen()),
     GetPage(name: Routes.itemList, page: () => const ItemListScreen()),
     GetPage(name: Routes.profile, page: () => const ProfileScreen()), // <-- Must be present and correctly defined
+    GetPage(name: Routes.driveFilePickerDemo, page: () => const DriveFilePickerDemo()),
   ];
 }
