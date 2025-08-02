@@ -22,6 +22,8 @@ IconData dashIcon(String label) {
     case 'transactions':     return Icons.receipt_long;
     case 'sales flow':       return Icons.swap_horiz;
     case 'file picker':      return Icons.cloud_download;
+    case 'automated csv':    return Icons.file_download_outlined;
+    case 'csv manager':      return Icons.table_chart;
     default:                 return Icons.help_outline;
   }
 }
@@ -34,6 +36,7 @@ const List<DashTile> dashTiles = [
   DashTile('Debtors',          Routes.debtors),       // ✅ fixed
   DashTile('Creditors', Routes.creditors),
   DashTile('Profit',           Routes.profit),
+  DashTile('CSV Manager',      Routes.automatedCsv),
   DashTile('Transactions',     Routes.transactions),
   DashTile('Sales Flow',       ''), // TODO route
 ];
@@ -51,6 +54,7 @@ const List<DashTile> drawerTiles = [
   DashTile('Profit',              Routes.profit),
   DashTile('Transactions',        Routes.transactions),
   DashTile('File Picker',         Routes.filePicker),
+  DashTile('Automated CSV',       Routes.automatedCsv),
   DashTile('Sales Purchase Flow', ''),               // add route later
 ];
 
