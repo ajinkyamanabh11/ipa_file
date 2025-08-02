@@ -3,10 +3,10 @@ import '../services/google_drive_service.dart';
 import '../util/csv_utils.dart';
 
 class SoftAgriPath {
-  static const String _ROOT = 'SoftAgri_Backups';
+  static const String _ROOT = 'Softagri_Backups';
   static const String _LEAF = 'softagri_csv';
 
-  /// Returns the path: ['SoftAgri_Backups', '<yyyyyyyy+1>', 'softagri_csv']
+  /// Returns the path: ['Softagri_Backups', '<yyyyyyyy+1>', 'softagri_csv']
   static Future<List<String>> build(GoogleDriveService drive) async {
     try {
       // 1️⃣  locate the top‑level "Financialyear_csv" folder
