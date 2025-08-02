@@ -12,6 +12,7 @@ import '../controllers/item_type_controller.dart';
 import '../controllers/sales_controller.dart';
 import '../controllers/theme_controller.dart';
 import '../services/CsvDataServices.dart';
+import '../services/automated_csv_service.dart';
 import '../services/file_picker_service.dart';
 import '../services/google_drive_service.dart';
 import '../services/background_processor.dart';
@@ -69,6 +70,8 @@ class InitialBindings {
 
     // 🔴 NEW: File Picker Service (permanent singleton)
     Get.put<FilePickerService>(FilePickerService(), permanent: true);
+    // 🔴 NEW: Automated CSV Service (permanent singleton)
+    Get.put<AutomatedCsvService>(AutomatedCsvService(), permanent: true);
     // Item / stock logic can be recreated when needed (fenix)
     Get.lazyPut<ItemTypeController>(() => ItemTypeController(), fenix: true);
 
