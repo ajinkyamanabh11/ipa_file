@@ -1,8 +1,61 @@
 import 'dart:async';
-import 'dart:js' as js;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'package:get/get.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../controllers/google_signin_controller.dart';
+
+// External JS API definitions
+@JS()
+external JSObject get gapi;
+
+@JS()
+external JSObject get google;
+
+@JS('gapi.load')
+external void gapiLoad(String api, JSFunction callback);
+
+@JS()
+@anonymous
+extension type PickerData(JSObject _) implements JSObject {
+  external String get action;
+  external JSArray<JSObject> get docs;
+}
+
+@JS()
+@anonymous
+extension type FileData(JSObject _) implements JSObject {
+  external String get id;
+  external String get name;
+  external String get mimeType;
+  external int? get sizeBytes;
+  external String? get url;
+}
+
+@JS()
+@anonymous
+extension type PickerBuilder(JSObject _) implements JSObject {
+  external PickerBuilder addView(JSObject view);
+  external PickerBuilder enableFeature(JSObject feature);
+  external PickerBuilder setOAuthToken(String token);
+  external PickerBuilder setDeveloperKey(String key);
+  external PickerBuilder setAppId(String appId);
+  external PickerBuilder setCallback(JSFunction callback);
+  external JSObject build();
+}
+
+@JS()
+@anonymous
+extension type DocsView(JSObject _) implements JSObject {
+  external DocsView setMimeTypes(String mimeType);
+  external DocsView setParent(String parentId);
+}
+
+@JS()
+@anonymous
+extension type Picker(JSObject _) implements JSObject {
+  external void setVisible(bool visible);
+}
 
 class GooglePickerService extends GetxService {
   final _google = Get.find<GoogleSignInController>();
@@ -35,9 +88,9 @@ class GooglePickerService extends GetxService {
     final completer = Completer<void>();
 
     // Load Google APIs
-    js.context.callMethod('gapi.load', ['picker', js.allowInterop((result) {
+    gapiLoad('picker', (() {
       completer.complete();
-    })]);
+    }).toJS);
 
     return completer.future;
   }
@@ -84,67 +137,71 @@ class GooglePickerService extends GetxService {
 
     try {
       // Create picker callback
-      final pickerCallback = js.allowInterop((data) {
-        final action = data['action'];
+      final pickerCallback = ((PickerData data) {
+        final action = data.action;
 
         if (action == 'picked') {
-          final docs = data['docs'] as List;
-          final selectedFiles = docs.map((doc) => {
-            'id': doc['id'],
-            'name': doc['name'],
-            'mimeType': doc['mimeType'],
-            'sizeBytes': doc['sizeBytes'],
-            'url': doc['url'],
-          }).toList();
+          final docs = data.docs;
+          final selectedFiles = <Map<String, dynamic>>[];
+
+          for (int i = 0; i < docs.length; i++) {
+            final doc = docs[i] as FileData;
+            selectedFiles.add({
+              'id': doc.id,
+              'name': doc.name,
+              'mimeType': doc.mimeType,
+              'sizeBytes': doc.sizeBytes,
+              'url': doc.url,
+            });
+          }
 
           completer.complete(selectedFiles);
         } else if (action == 'cancel') {
           completer.complete(null);
         }
-      });
+      }).toJS;
 
       // Build the picker
-      final pickerBuilder = js.context['google']['picker']['PickerBuilder']();
+      final pickerBuilder = google.getProperty('picker'.toJS)?.getProperty('PickerBuilder'.toJS).callAsConstructor() as PickerBuilder;
 
       // Add Drive view
-      final docsView = js.context['google']['picker']['DocsView']();
+      final docsView = google.getProperty('picker'.toJS)?.getProperty('DocsView'.toJS).callAsConstructor() as DocsView;
 
       // Set MIME types filter if provided
       if (mimeTypes != null && mimeTypes.isNotEmpty) {
         for (final mimeType in mimeTypes) {
-          docsView.callMethod('setMimeTypes', [mimeType]);
+          docsView.setMimeTypes(mimeType);
         }
       }
 
       // Set folder if provided
       if (folderId != null) {
-        docsView.callMethod('setParent', [folderId]);
+        docsView.setParent(folderId);
       }
 
-      pickerBuilder.callMethod('addView', [docsView]);
+      pickerBuilder.addView(docsView as JSObject);
 
       // Enable multiselect if requested
       if (multiSelect) {
-        pickerBuilder.callMethod('enableFeature', [
-          js.context['google']['picker']['Feature']['MULTISELECT_ENABLED']
-        ]);
+        final feature = google.getProperty('picker'.toJS)?.getProperty('Feature'.toJS).getProperty('MULTISELECT_ENABLED'.toJS);
+        pickerBuilder.enableFeature(feature);
       }
 
       // Set OAuth token
-      pickerBuilder.callMethod('setOAuthToken', [accessToken]);
+      pickerBuilder.setOAuthToken(accessToken);
 
       // Set API key
-      pickerBuilder.callMethod('setDeveloperKey', [_apiKey]);
+      pickerBuilder.setDeveloperKey(_apiKey);
 
       // Set app ID
-      pickerBuilder.callMethod('setAppId', [_appId]);
+      pickerBuilder.setAppId(_appId);
 
       // Set callback
-      pickerBuilder.callMethod('setCallback', [pickerCallback]);
+      pickerBuilder.setCallback(pickerCallback);
 
       // Build and show picker
-      final picker = pickerBuilder.callMethod('build');
-      picker.callMethod('setVisible', [true]);
+      final picker = pickerBuilder.build() as Picker;
+      picker.setVisible(true);
 
     } catch (e) {
       completer.completeError(e);
@@ -178,3 +235,4 @@ class GooglePickerService extends GetxService {
     );
   }
 }
+
