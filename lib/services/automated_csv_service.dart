@@ -47,42 +47,104 @@ class AutomatedCsvService extends GetxService {
 
   /// Search for all CSV files in the Softagri_Backups,Financialyear_csv folder
   Future<List<CsvFileInfo>> searchCsvFiles() async {
-  try {
-  log('🔍 AutomatedCsvService: Starting CSV file search...');
-
-  // Get the Softagri_Backups path using the existing SoftAgriPath
-  final pathSegments = await SoftAgriPath.build(_driveService);
-  log('📁 AutomatedCsvService: Target path: ${pathSegments.join('/')}');
-
-  // Get the folder ID for the target path
-  final folderId = await _driveService.folderId(pathSegments);
-  log('📂 AutomatedCsvService: Found folder ID: $folderId');
-
-  // Search for CSV files in the folder
-  final csvFiles = await _filePickerService.browseGoogleDriveFiles(
-  folderId: folderId,
-  query: '.csv',
-  );
-
-  // Filter only CSV files and convert to CsvFileInfo
-  final csvFileInfos = csvFiles
-      .where((file) =>
-  file.name?.toLowerCase().endsWith('.csv') == true &&
-  file.mimeType?.contains('csv') == true)
-      .map((file) => CsvFileInfo(
-  id: file.id!,
-  name: file.name!,
-  size: _formatFileSize(file.size),
-  modifiedTime: file.modifiedTime,
-  ))
-      .toList();
-
-  log('✅ AutomatedCsvService: Found ${csvFileInfos.length} CSV files');
-  return csvFileInfos;
-  } catch (e) {
-  log('❌ AutomatedCsvService: Error searching CSV files: $e');
-  throw Exception('Failed to search CSV files: $e');
+    log('🔍 AutomatedCsvService: Starting CSV file search...');
+    
+    // Try both Softagri_Backups and Financialyear_csv paths
+    List<CsvFileInfo> csvFileInfos = [];
+    
+    // First try Softagri_Backups path
+    try {
+      csvFileInfos.addAll(await _searchInSoftagriBackups());
+    } catch (e) {
+      log('⚠️ AutomatedCsvService: Error searching Softagri_Backups: $e');
+    }
+    
+    // Then try Financialyear_csv path  
+    try {
+      csvFileInfos.addAll(await _searchInFinancialYearCsv());
+    } catch (e) {
+      log('⚠️ AutomatedCsvService: Error searching Financialyear_csv: $e');
+    }
+    
+    // Remove duplicates based on file ID
+    final uniqueFiles = <String, CsvFileInfo>{};
+    for (final file in csvFileInfos) {
+      uniqueFiles[file.id] = file;
+    }
+    
+    final finalFiles = uniqueFiles.values.toList();
+    log('✅ AutomatedCsvService: Total unique CSV files found: ${finalFiles.length}');
+    return finalFiles;
   }
+  
+  /// Search in Softagri_Backups with fallback year directories
+  Future<List<CsvFileInfo>> _searchInSoftagriBackups() async {
+    final currentYear = DateTime.now().year;
+    final fallbackYears = [
+      '${currentYear}${currentYear + 1}',   // 20252026
+      '${currentYear + 1}${currentYear + 2}', // 20262027  
+      '${currentYear + 2}${currentYear + 3}', // 20272028
+      '${currentYear - 1}${currentYear}',     // 20242025 (previous year)
+    ];
+    
+    // First try to get the year from SoftAgriPath (which reads from FinancialYear.csv)
+    List<String> pathSegments;
+    try {
+      pathSegments = await SoftAgriPath.build(_driveService);
+      log('📁 AutomatedCsvService: Softagri_Backups path: ${pathSegments.join('/')}');
+      return await _searchCsvInPath(pathSegments);
+    } catch (e) {
+      log('⚠️ AutomatedCsvService: Primary path failed, trying fallback paths: $e');
+    }
+    
+    // If primary path fails, try fallback years
+    for (final year in fallbackYears) {
+      final fallbackPath = ['Softagri_Backups', year, 'softagri_csv'];
+      try {
+        log('📁 AutomatedCsvService: Trying fallback path: ${fallbackPath.join('/')}');
+        return await _searchCsvInPath(fallbackPath);
+      } catch (e) {
+        log('⚠️ AutomatedCsvService: Fallback path failed: ${fallbackPath.join('/')} - $e');
+      }
+    }
+    
+    throw Exception('All Softagri_Backups paths failed: Exception: Folder not found: Softagri_Backups');
+  }
+  
+  /// Search in Financialyear_csv folder
+  Future<List<CsvFileInfo>> _searchInFinancialYearCsv() async {
+    final pathSegments = ['Financialyear_csv'];
+    log('📁 AutomatedCsvService: Searching in Financialyear_csv');
+    return await _searchCsvInPath(pathSegments);
+  }
+  
+  /// Search for CSV files in the specified path
+  Future<List<CsvFileInfo>> _searchCsvInPath(List<String> pathSegments) async {
+    // Get the folder ID for the target path
+    final folderId = await _driveService.folderId(pathSegments);
+    log('📂 AutomatedCsvService: Found folder ID: $folderId for path: ${pathSegments.join('/')}');
+
+    // Search for CSV files in the folder
+    final csvFiles = await _filePickerService.browseGoogleDriveFiles(
+      folderId: folderId,
+      query: '.csv',
+    );
+
+    // Filter only CSV files and convert to CsvFileInfo
+    final csvFileInfos = csvFiles
+        .where((file) =>
+            file.name?.toLowerCase().endsWith('.csv') == true &&
+            file.mimeType?.contains('csv') == true)
+        .map((file) => CsvFileInfo(
+            id: file.id!,
+            name: file.name!,
+            size: _formatFileSize(file.size),
+            modifiedTime: file.modifiedTime,
+        ))
+        .toList();
+
+    log('✅ AutomatedCsvService: Found ${csvFileInfos.length} CSV files in ${pathSegments.join('/')}');
+    return csvFileInfos;
   }
 
   /// Download all CSV files automatically
