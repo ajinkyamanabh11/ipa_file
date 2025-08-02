@@ -14,6 +14,7 @@ import '../controllers/theme_controller.dart';
 import '../services/CsvDataServices.dart';
 import '../services/google_drive_service.dart';
 import '../services/background_processor.dart';
+import '../services/file_picker_service.dart';
 import '../util/memory_monitor.dart'; // NEW IMPORT
 
 class InitialBindings {
@@ -44,6 +45,9 @@ class InitialBindings {
 
     // 🔴 NEW: Centralized CSV Data Service
     Get.put<CsvDataService>(CsvDataService(), permanent: true);
+
+    // 🔴 NEW: File Picker Service (permanent singleton)
+    Get.put<FilePickerService>(FilePickerService(), permanent: true);
 
     // 🔴 NEW: Theme Controller (permanent singleton)
     Get.put<ThemeController>(ThemeController(), permanent: true); // ADD THIS
