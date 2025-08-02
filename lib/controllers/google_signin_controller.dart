@@ -12,6 +12,7 @@ class GoogleSignInController extends GetxController {
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: [
       'email',
+      'https://www.googleapis.com/auth/drive.file',
       'https://www.googleapis.com/auth/drive.readonly',
     ],
     // CRITICAL: Conditionally provide the clientId for web builds.
