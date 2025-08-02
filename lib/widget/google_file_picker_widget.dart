@@ -1,240 +1,295 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../services/google_picker_service.dart';
-import '../services/google_drive_service.dart';
+import '../services/google_drive_service.dart' as drive;
+import '../controllers/google_signin_controller.dart';
 
-class GoogleFilePickerWidget extends StatefulWidget {
-  final Function(List<Map<String, dynamic>> files)? onFilesSelected;
-  final Function(Map<String, String> filesContent)? onFilesDownloaded;
-  final bool multiSelect;
-  final List<String>? allowedMimeTypes;
-  final String? title;
 
-  const GoogleFilePickerWidget({
-    Key? key,
-    this.onFilesSelected,
-    this.onFilesDownloaded,
-    this.multiSelect = false,
-    this.allowedMimeTypes,
-    this.title,
-  }) : super(key: key);
+/// A widget that demonstrates the mobile-compatible Google Drive file picker
+class GoogleDriveFilePickerWidget extends StatefulWidget {
+  const GoogleDriveFilePickerWidget({super.key});
 
   @override
-  State<GoogleFilePickerWidget> createState() => _GoogleFilePickerWidgetState();
+  State<GoogleDriveFilePickerWidget> createState() => _GoogleDriveFilePickerWidgetState();
 }
 
-class _GoogleFilePickerWidgetState extends State<GoogleFilePickerWidget> {
-  final _pickerService = Get.find<GooglePickerService>();
-  final _driveService = Get.find<GoogleDriveService>();
+class _GoogleDriveFilePickerWidgetState extends State<GoogleDriveFilePickerWidget> {
+  final _googleSignIn = Get.find<GoogleSignInController>();
+  final _driveService = Get.find<drive.GoogleDriveService>();
 
+  List<drive.DriveFile> _selectedFiles = [];
   bool _isLoading = false;
-  List<Map<String, dynamic>> _selectedFiles = [];
-  Map<String, double> _downloadProgress = {};
-  Map<String, String> _downloadedContent = {};
-  String? _error;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 4,
-      margin: const EdgeInsets.all(16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Google Drive File Picker'),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (widget.title != null) ...[
-              Text(
-                widget.title!,
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // Pick Files Button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : _pickFiles,
-                icon: const Icon(Icons.drive_folder_upload),
-                label: Text(
-                  widget.multiSelect
-                      ? 'Select Files from Google Drive'
-                      : 'Select File from Google Drive',
+            // Sign-in status
+            Obx(() => Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Google Account Status',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    if (_googleSignIn.isSignedIn) ...[
+                      Row(
+                        children: [
+                          const Icon(Icons.check_circle, color: Colors.green),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Signed in as: ${_googleSignIn.user.value?.email ?? 'Unknown'}',
+                              style: const TextStyle(color: Colors.green),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        onPressed: _googleSignIn.logout,
+                        icon: const Icon(Icons.logout),
+                        label: const Text('Sign Out'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ] else ...[
+                      Row(
+                        children: [
+                          const Icon(Icons.error, color: Colors.red),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text(
+                              'Not signed in',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        onPressed: _googleSignIn.login,
+                        icon: const Icon(Icons.login),
+                        label: const Text('Sign In with Google'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            )),
+
+            const SizedBox(height: 16),
+
+            // File picker buttons
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'File Picker Options',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Pick any files
+                    ElevatedButton.icon(
+                      onPressed: _isLoading ? null : () => _pickFiles(false),
+                      icon: const Icon(Icons.file_present),
+                      label: const Text('Pick Single File'),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Pick multiple files
+                    ElevatedButton.icon(
+                      onPressed: _isLoading ? null : () => _pickFiles(true),
+                      icon: const Icon(Icons.library_books),
+                      label: const Text('Pick Multiple Files'),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Pick CSV files
+                    ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _pickCsvFiles,
+                      icon: const Icon(Icons.table_chart),
+                      label: const Text('Pick CSV Files'),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Pick images
+                    ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _pickImages,
+                      icon: const Icon(Icons.image),
+                      label: const Text('Pick Images'),
+                    ),
+                  ],
                 ),
               ),
             ),
 
-            if (_error != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  border: Border.all(color: Colors.red.shade300),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.error, color: Colors.red.shade700),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _error!,
-                        style: TextStyle(color: Colors.red.shade700),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => setState(() => _error = null),
-                      icon: const Icon(Icons.close),
-                      iconSize: 20,
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            const SizedBox(height: 16),
 
-            // Selected Files List
-            if (_selectedFiles.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text(
-                'Selected Files:',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              ...List.generate(_selectedFiles.length, (index) {
-                final file = _selectedFiles[index];
-                final fileName = file['name'] as String;
-                final fileSize = file['sizeBytes'] as String?;
-                final progress = _downloadProgress[fileName] ?? 0.0;
-                final isDownloaded = _downloadedContent.containsKey(fileName);
-
-                return Card(
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  child: ListTile(
-                    leading: Icon(
-                      _getFileIcon(file['mimeType'] as String?),
-                      color: Colors.blue,
-                    ),
-                    title: Text(fileName),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (fileSize != null)
-                          Text('Size: ${_formatFileSize(int.tryParse(fileSize) ?? 0)}'),
-                        if (progress > 0 && progress < 1.0)
-                          LinearProgressIndicator(value: progress),
-                        if (isDownloaded)
-                          const Text(
-                            'Downloaded ✓',
-                            style: TextStyle(color: Colors.green),
+            // Selected files display
+            Expanded(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Selected Files (${_selectedFiles.length})',
+                            style: Theme.of(context).textTheme.titleMedium,
                           ),
-                      ],
-                    ),
-                    trailing: isDownloaded
-                        ? const Icon(Icons.check_circle, color: Colors.green)
-                        : progress > 0
-                        ? CircularProgressIndicator(value: progress)
-                        : IconButton(
-                      onPressed: () => _removeFile(index),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ),
-                );
-              }),
-            ],
-
-            // Download Button
-            if (_selectedFiles.isNotEmpty && _downloadedContent.isEmpty) ...[
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _isLoading ? null : _downloadFiles,
-                  icon: const Icon(Icons.download),
-                  label: const Text('Download Selected Files'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-            ],
-
-            // Success Message
-            if (_downloadedContent.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  border: Border.all(color: Colors.green.shade300),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.check_circle, color: Colors.green.shade700),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '${_downloadedContent.length} file(s) downloaded successfully!',
-                        style: TextStyle(color: Colors.green.shade700),
+                          if (_selectedFiles.isNotEmpty)
+                            TextButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _selectedFiles.clear();
+                                });
+                              },
+                              icon: const Icon(Icons.clear),
+                              label: const Text('Clear'),
+                            ),
+                        ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 8),
+
+                      if (_isLoading) ...[
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(20.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        ),
+                      ] else if (_selectedFiles.isEmpty) ...[
+                        const Expanded(
+                          child: Center(
+                            child: Text(
+                              'No files selected',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ] else ...[
+                        Expanded(
+                          child: ListView.builder(
+                            itemCount: _selectedFiles.length,
+                            itemBuilder: (context, index) {
+                              final file = _selectedFiles[index];
+                              return ListTile(
+                                leading: Icon(
+                                  _getFileIcon(file.mimeType),
+                                  color: _getFileIconColor(file.mimeType),
+                                ),
+                                title: Text(
+                                  file.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(_getFileTypeLabel(file.mimeType)),
+                                    if (file.sizeBytes != null)
+                                      Text(_formatFileSize(file.sizeBytes!)),
+                                  ],
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      onPressed: () => _downloadFile(file),
+                                      icon: const Icon(Icons.download),
+                                      tooltip: 'Download',
+                                    ),
+                                    IconButton(
+                                      onPressed: () {
+                                        setState(() {
+                                          _selectedFiles.removeAt(index);
+                                        });
+                                      },
+                                      icon: const Icon(Icons.delete),
+                                      tooltip: 'Remove',
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
-            ],
-
-            if (_isLoading) ...[
-              const SizedBox(height: 16),
-              const Center(
-                child: CircularProgressIndicator(),
-              ),
-            ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Future<void> _pickFiles() async {
+  Future<void> _pickFiles(bool multiSelect) async {
+    if (!_googleSignIn.isSignedIn) {
+      Get.snackbar(
+        'Sign In Required',
+        'Please sign in with your Google account first.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+
     setState(() {
       _isLoading = true;
-      _error = null;
     });
 
     try {
-      final files = await _pickerService.pickFiles(
-        multiSelect: widget.multiSelect,
-        mimeTypes: widget.allowedMimeTypes ?? [
-          'text/csv',
-          'application/vnd.ms-excel',
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ],
+      final files = await _driveService.pickFiles(
+        multiSelect: multiSelect,
+        title: multiSelect ? 'Select Multiple Files' : 'Select a File',
       );
 
       if (files != null && files.isNotEmpty) {
         setState(() {
-          _selectedFiles = files;
-          _downloadProgress.clear();
-          _downloadedContent.clear();
+          if (multiSelect) {
+            _selectedFiles.addAll(files as Iterable<drive.DriveFile>);
+          } else {
+            _selectedFiles = files.cast<drive.DriveFile>();
+          }
         });
-
-        widget.onFilesSelected?.call(files);
       }
     } catch (e) {
-      setState(() {
-        _error = 'Failed to select files: $e';
-      });
+      Get.snackbar(
+        'Error',
+        'Failed to pick files: $e',
+        snackPosition: SnackPosition.BOTTOM,
+      );
     } finally {
       setState(() {
         _isLoading = false;
@@ -242,82 +297,188 @@ class _GoogleFilePickerWidgetState extends State<GoogleFilePickerWidget> {
     }
   }
 
-  Future<void> _downloadFiles() async {
-    if (_selectedFiles.isEmpty) return;
+  Future<void> _pickCsvFiles() async {
+    if (!_googleSignIn.isSignedIn) {
+      Get.snackbar(
+        'Sign In Required',
+        'Please sign in with your Google account first.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
 
     setState(() {
       _isLoading = true;
-      _error = null;
-      _downloadProgress.clear();
     });
 
     try {
-      final content = await _driveService.downloadMultipleFiles(
-        _selectedFiles,
-        onProgress: (fileName, progress) {
-          setState(() {
-            _downloadProgress[fileName] = progress;
-          });
-        },
-      );
+      final files = await _driveService.pickCsvFiles(multiSelect: true);
 
-      setState(() {
-        _downloadedContent = content;
-      });
-
-      widget.onFilesDownloaded?.call(content);
+      if (files != null && files.isNotEmpty) {
+        setState(() {
+          _selectedFiles.addAll(files as Iterable<drive.DriveFile>);
+        });
+      }
     } catch (e) {
-      setState(() {
-        _error = 'Failed to download files: $e';
-      });
+      Get.snackbar(
+        'Error',
+        'Failed to pick CSV files: $e',
+        snackPosition: SnackPosition.BOTTOM,
+      );
     } finally {
       setState(() {
         _isLoading = false;
-        _downloadProgress.clear();
       });
     }
   }
 
-  void _removeFile(int index) {
-    setState(() {
-      _selectedFiles.removeAt(index);
-      if (_selectedFiles.isEmpty) {
-        _downloadedContent.clear();
-        _downloadProgress.clear();
-      }
-    });
-  }
-
-  IconData _getFileIcon(String? mimeType) {
-    if (mimeType == null) return Icons.description;
-
-    if (mimeType.contains('spreadsheet') || mimeType.contains('excel')) {
-      return Icons.table_chart;
-    } else if (mimeType.contains('csv')) {
-      return Icons.grid_on;
-    } else if (mimeType.contains('document')) {
-      return Icons.description;
-    } else if (mimeType.contains('image')) {
-      return Icons.image;
-    } else if (mimeType.contains('pdf')) {
-      return Icons.picture_as_pdf;
+  Future<void> _pickImages() async {
+    if (!_googleSignIn.isSignedIn) {
+      Get.snackbar(
+        'Sign In Required',
+        'Please sign in with your Google account first.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
     }
 
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final files = await _driveService.pickFiles(
+        multiSelect: true,
+        mimeTypes: [
+          'image/jpeg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+          'image/bmp',
+        ],
+        title: 'Select Images',
+      );
+
+      if (files != null && files.isNotEmpty) {
+        setState(() {
+          _selectedFiles.addAll(files as Iterable<drive.DriveFile>);
+        });
+      }
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        'Failed to pick images: $e',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _downloadFile(drive.DriveFile file) async {
+    try {
+      Get.snackbar(
+        'Downloading',
+        'Starting download of ${file.name}...',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+
+      if (file.mimeType.contains('csv') || file.mimeType.contains('text')) {
+        // For CSV files, use the existing downloadCsv method
+        final content = await _driveService.downloadCsv(file.id);
+
+        Get.dialog(
+          AlertDialog(
+            title: Text('File Content: ${file.name}'),
+            content: SizedBox(
+              width: Get.width * 0.8,
+              height: Get.height * 0.6,
+              child: SingleChildScrollView(
+                child: Text(
+                  content.length > 1000
+                      ? '${content.substring(0, 1000)}...\n\n(Content truncated for display)'
+                      : content,
+                  style: const TextStyle(fontFamily: 'monospace'),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        // For other files, download as bytes
+        final bytes = await _driveService.downloadFileAsBytes(file.id);
+
+        if (bytes != null) {
+          Get.snackbar(
+            'Download Complete',
+            'Downloaded ${file.name} (${_formatFileSize(bytes.length)})',
+            snackPosition: SnackPosition.BOTTOM,
+          );
+        }
+      }
+    } catch (e) {
+      Get.snackbar(
+        'Download Error',
+        'Failed to download ${file.name}: $e',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  // Helper methods for UI
+  IconData _getFileIcon(String mimeType) {
+    if (mimeType.startsWith('image/')) return Icons.image;
+    if (mimeType.startsWith('video/')) return Icons.video_file;
+    if (mimeType.startsWith('audio/')) return Icons.audio_file;
+    if (mimeType.contains('pdf')) return Icons.picture_as_pdf;
+    if (mimeType.contains('spreadsheet') || mimeType.contains('excel') || mimeType.contains('csv')) {
+      return Icons.table_chart;
+    }
+    if (mimeType.contains('document') || mimeType.contains('word')) return Icons.description;
+    if (mimeType.contains('presentation') || mimeType.contains('powerpoint')) return Icons.slideshow;
     return Icons.insert_drive_file;
   }
 
-  String _formatFileSize(int bytes) {
-    if (bytes == 0) return '0 B';
-
-    const suffixes = ['B', 'KB', 'MB', 'GB'];
-    int i = 0;
-    double size = bytes.toDouble();
-
-    while (size >= 1024 && i < suffixes.length - 1) {
-      size /= 1024;
-      i++;
+  Color _getFileIconColor(String mimeType) {
+    if (mimeType.startsWith('image/')) return Colors.purple;
+    if (mimeType.startsWith('video/')) return Colors.red;
+    if (mimeType.startsWith('audio/')) return Colors.orange;
+    if (mimeType.contains('pdf')) return Colors.red;
+    if (mimeType.contains('spreadsheet') || mimeType.contains('excel') || mimeType.contains('csv')) {
+      return Colors.green;
     }
+    if (mimeType.contains('document') || mimeType.contains('word')) return Colors.blue;
+    if (mimeType.contains('presentation') || mimeType.contains('powerpoint')) return Colors.orange;
+    return Colors.grey;
+  }
 
-    return '${size.toStringAsFixed(i == 0 ? 0 : 1)} ${suffixes[i]}';
+  String _getFileTypeLabel(String mimeType) {
+    if (mimeType.startsWith('image/')) return 'Image';
+    if (mimeType.startsWith('video/')) return 'Video';
+    if (mimeType.startsWith('audio/')) return 'Audio';
+    if (mimeType.contains('pdf')) return 'PDF';
+    if (mimeType.contains('csv')) return 'CSV';
+    if (mimeType.contains('spreadsheet')) return 'Spreadsheet';
+    if (mimeType.contains('excel')) return 'Excel';
+    if (mimeType.contains('document')) return 'Document';
+    if (mimeType.contains('word')) return 'Word Document';
+    if (mimeType.contains('presentation')) return 'Presentation';
+    if (mimeType.contains('powerpoint')) return 'PowerPoint';
+    return 'File';
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 }
